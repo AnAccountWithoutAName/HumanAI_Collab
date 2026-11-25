@@ -183,23 +183,31 @@ class TeammateTest(unittest.TestCase):
         self.assertEqual((game.partner.name, mate.owner), ("add_onion_pot1", "human"))
         self.assertEqual(mate.calls, 0)
 
-    def test_veto_blocks_then_expires_and_asking_lifts_it(self):
+    def test_no_question_when_both_options_make_the_same_soup(self):
         game = quiet()
-        mate = Teammate(game, "jev", ask=FakeJev("add_onion_pot1"))
+        game.open_order("tomato soup", 99)
+        mate = Teammate(game, "jev", ask=FakeJev("add_tomato_pot1", "add_tomato_pot2", confidence=0.01))
         mate.tick()
-        mate.veto("add_onion_pot1")
-        self.assertNotEqual(game.partner.name, "add_onion_pot1")
-        self.assertTrue(mate.blocked("add_onion_pot1"))
-        mate.instruct("add_onion_pot1")
-        self.assertEqual(mate.vetoes, {})
-        mate.veto("add_onion_pot1")
-        play(mate, planner.VETO_TICKS)
-        self.assertEqual(mate.vetoes, {})
-        with self.assertRaises(ValueError):
-            mate.veto("fly")
+        self.assertIsNone(mate.asking)
+        self.assertEqual(game.partner.name, "add_tomato_pot2")  # the quicker of the two
+
+    def test_no_question_between_work_and_idling(self):
+        mate = Teammate(quiet(), "jev", ask=FakeJev("wait", "add_tomato_pot2", confidence=0.01))
+        mate.tick()
+        self.assertEqual(mate.runner.name, "add_tomato_pot2")
+
+    def test_short_facts_are_short(self):
+        game = quiet()
+        game.open_order("tomato soup", 99)
+        game.open_order("mixed soup", 99)
+        for c in menu(game, 1).values():
+            self.assertLess(len(c["short"]), 100, c["short"])
+        self.assertIn("mixed soup (1 of 3), 60 points, order due in 99", menu(game, 1)["add_onion_pot1"]["short"])
+        self.assertIn("Rules out the tomato soup order here", menu(game, 1)["add_onion_pot1"]["short"])
 
     def test_unsure_asks_then_goes_ahead(self):
         game = quiet()
+        game.open_order("tomato soup", 99)
         mate = Teammate(game, "jev", ask=FakeJev("add_onion_pot1", confidence=0.01))
         mate.tick()
         self.assertEqual(mate.view()["asking"]["choices"][0], "add_onion_pot1")
@@ -212,6 +220,7 @@ class TeammateTest(unittest.TestCase):
 
     def test_unsure_takes_the_players_answer(self):
         game = quiet()
+        game.open_order("tomato soup", 99)
         mate = Teammate(game, "jev", ask=FakeJev("add_onion_pot1", confidence=0.01))
         mate.tick()
         mate.instruct("add_tomato_pot2")

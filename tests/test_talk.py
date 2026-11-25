@@ -239,9 +239,6 @@ class WhyTest(unittest.TestCase):
         self.assertIn("20% against 80%", last(mate))
         mate.talk.why("serve")
         self.assertIn("not possible", last(mate))
-        mate.veto("add_onion_pot2")
-        mate.talk.why("add_onion_pot2")
-        self.assertIn("vetoed", last(mate))
 
     def test_human_goal_is_attributed_to_the_human(self):
         _, mate = setup()
@@ -337,7 +334,7 @@ class RuleTest(unittest.TestCase):
         self.assertEqual(game.partner.name, "add_tomato_pot1")
 
 
-class SoupAndVetoTest(unittest.TestCase):
+class SoupTest(unittest.TestCase):
     def test_make_restricts_adding_until_served(self):
         game, mate = setup(haiku=FakeHaiku({"type": "make", "recipe": "tomato soup"}), jev=Scored(add_onion_pot1=0.9, add_tomato_pot2=0.1))
         mate.talk.hear("but we need tomato soup")
@@ -426,49 +423,17 @@ class SoupAndVetoTest(unittest.TestCase):
         self.assertIsNone(mate.blocked("add_onion_pot1"))
         self.assertIsNone(mate.blocked("add_tomato_pot2"))
 
-    def test_veto_with_a_cost_is_questioned(self):
-        game, mate = setup(jev=Scored(add_tomato_pot1=0.9, add_onion_pot1=0.1), rush="tomato soup")
-        mate.tick()
-        for n in ("add_tomato_pot2",):
-            mate.veto(n, force=True)
-        mate.veto("add_tomato_pot1")
-        self.assertEqual((mate.talk.card["kind"], game.partner.name), ("veto", "add_tomato_pot1"))
-        json_safe(mate)
-        mate.answer("withdraw")
-        self.assertEqual(game.partner.name, "add_tomato_pot1")
-        mate.veto("add_tomato_pot1")
-        mate.answer("insist")
-        self.assertNotEqual(game.partner.name, "add_tomato_pot1")
-
-    def test_last_useful_job_is_not_vetoed_silently(self):
-        _, mate = setup(jev=Scored(add_onion_pot1=0.3))
-        for n in ("add_onion_pot1", "add_onion_pot2", "add_tomato_pot1"):
-            mate.veto(n)
-        self.assertIsNone(mate.talk.card)
-        mate.veto("add_tomato_pot2")
-        self.assertIn("nothing useful", last(mate))
-
-    def test_rush_blocked_by_vetoes_is_raised(self):
-        game, mate = setup(jev=Scored(add_tomato_pot1=0.9, add_onion_pot1=0.1))
-        mate.veto("add_tomato_pot1", force=True)
-        mate.veto("add_tomato_pot2", force=True)
-        game.open_order("tomato soup", 90)
-        mate.tick()
-        self.assertEqual((mate.talk.card["kind"], mate.talk.card["goal"]), ("conflict", "add_tomato_pot1"))
-        mate.answer("cancel")
-        self.assertEqual(game.partner.name, "add_tomato_pot1")
-
-    def test_free_clears_vetoes(self):
+    def test_free_clears_rules(self):
         _, mate = setup(haiku=FakeHaiku({"type": "free"}))
-        mate.veto("add_tomato_pot1", force=True)
+        mate.add_order("avoid", ["tomato"], "cancelled")
         mate.talk.hear("do something")
-        self.assertEqual(mate.vetoes, {})
+        self.assertEqual(mate.orders, [])
 
-    def test_why_mentions_vetoes_and_recipe(self):
+    def test_why_mentions_rules_and_recipe(self):
         _, mate = setup(jev=Scored(add_onion_pot1=0.9))
-        mate.veto("add_tomato_pot1", force=True)
+        mate.add_order("avoid", ["tomato"], "cancelled")
         mate.talk.why()
-        self.assertIn("you vetoed add tomato to pot 1", last(mate))
+        self.assertIn("your rules: leave tomatoes alone", last(mate))
         self.assertIn("towards mixed soup", last(mate))
 
     def test_question_falls_back_to_a_status(self):

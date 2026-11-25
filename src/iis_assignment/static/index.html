@@ -222,10 +222,9 @@ function talk() {
   $("request").hidden = !r;
   put("request", r ? `<b>${esc(r.text)}</b>${r.accepted ? "<br><small>Waiting for it.</small>" : `<div class="acts"><button data-ok="1">OK</button><button data-ok="0">Can't</button></div>`}` : "");
   $("card").hidden = !c;
-  const title = { object:"Chef 2 disagrees", warn:"This would do harm", conflict:"Your rule has a cost", clarify:"Which one?", which_order:"Which order?", veto:"Chef 2 objects to the veto", make:"Chef 2 disagrees" }, costs = c?.costs?.map(x => `<li>${esc(x)}</li>`).join("");
+  const title = { object:"Chef 2 disagrees", warn:"This would do harm", conflict:"Your rule has a cost", clarify:"Which one?", which_order:"Which order?", make:"Chef 2 disagrees" }, costs = c?.costs?.map(x => `<li>${esc(x)}</li>`).join("");
   const acts = !c ? [] : c.kind === "object" ? [["insist", `Do it anyway: ${c.label}`], ["idea", `Use chef 2's idea: ${c.prefer_label}`], ["withdraw", "Drop it"]]
     : c.kind === "make" ? [["insist", `Make ${c.recipe} anyway`], ["idea", `Do the ${c.prefer} order`], ["withdraw", "Drop it"]]
-    : c.kind === "veto" ? [["withdraw", `Let it carry on: ${c.label}`], ["insist", "Veto anyway"]]
     : c.kind === "warn" ? [["withdraw", "Drop it"], ["insist", `Do it anyway: ${c.label}`]]
     : c.kind === "conflict" ? [["withdraw", "Keep my rule"], ["insist", `Just this once: ${c.label}`], ["cancel", "Remove the rule"]] : [["withdraw", "Never mind"]];
   put("card", !c ? "" : `<b>${title[c.kind]}</b>${c.costs ? `<ul>${costs}</ul>` : ""}<div class="acts">${acts.map(([k, l]) => `<button data-reply="${k}">${l}</button>`).join("")}${(c.recipes || []).map(n => `<button data-recipe="${n}">${n}</button>`).join("")}${c.choices.map(o => `<button data-goal="${o.name}">${o.label}</button>`).join("")}</div>`);
@@ -243,7 +242,7 @@ function mate() {
   const jev = d?.source === "jev", top = Math.max(1, ...(d?.ranking || []).map(o => o.value));
   put("rank", !d || m.mode === "instructions" ? "" : `<p><small>Prompted by: ${d.why}</small></p>` + d.ranking.slice(0, 3).map(o =>
     `<div class="opt${o.name === now ? " on" : ""}"><div class="top"><b>${o.label}</b><span>${jev ? Math.round(o.value * 100) + "%" : ""}</span></div>
-     <div class="bar"><i style="width:${Math.max(0, 100 * o.value / top)}%"></i></div><small>~${o.ticks} ticks. ${o.facts}</small></div>`).join(""));
+     <div class="bar"><i style="width:${Math.max(0, 100 * o.value / top)}%"></i></div><small title="${esc(o.facts)}">~${o.ticks} ticks. ${o.short}</small></div>`).join(""));
   put("meta", m.mode === "instructions" ? "Chef 2 acts only when you tell it to." : m.note || (jev ? `Confidence ${Math.round(d.confidence * 100)}%, answered in ${d.seconds.toFixed(2)} s. ${m.calls}/${m.max_calls} calls, $${(m.cost + m.talk.cost).toFixed(4)}` : d ? "Chosen by rules" : ""));
 }
 // Between key presses nothing else would fetch a finished answer.

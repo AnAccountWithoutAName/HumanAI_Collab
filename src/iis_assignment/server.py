@@ -72,8 +72,6 @@ class Handler(BaseHTTPRequestHandler):
                     mate.talk.answer_request(bool(body["ok"]))
                 elif self.path == "/order/cancel":
                     mate.cancel_orders(body["id"])
-                elif self.path == "/veto":
-                    mate.veto(body["goal"])
                 elif self.path == "/mode":
                     mate.set_mode(body["mode"])
                 else:

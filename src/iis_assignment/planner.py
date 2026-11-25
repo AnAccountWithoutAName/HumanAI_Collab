@@ -15,7 +15,6 @@ MAX_CALLS = 150  # per game, so a bug cannot drain the credits
 ASK_BELOW = 0.2  # Jev confidence under which chef 2 asks instead of acting
 ASK_TICKS = 15  # then it goes ahead with its best option
 WAIT_TICKS = 8
-VETO_TICKS = 40
 BLOCKED_TICKS = 12
 RETRY_TICKS = 20  # pause after a failed call
 OBJECT_BELOW, OBJECT_ABOVE = 0.1, 0.5  # object if the request scores under one and the alternative over the other
@@ -233,13 +232,41 @@ def facts(game, chef, goal, ticks):
     return "; ".join(out)
 
 
-def menu(game, chef, vetoed=()):
+def short(game, chef, goal):
+    """One line about a goal for the player; facts() is the full version."""
+    if goal.kind == "add":
+        soup = game.state.objects.get(goal.pot)
+        inside = (list(soup.ingredients) if soup else []) + [goal.item]
+        recipe = toward(game, goal)
+        text = f"{'Completes' if len(inside) == 3 else 'Towards'} {recipe}{'' if len(inside) == 3 else f' ({len(inside)} of 3)'}, {value(game, chef, goal, recipe)} points"
+        if due(game, recipe) is not None:
+            text += f", order due in {due(game, recipe)}"
+        lost = [o["recipe"] for o in open_orders(game) if o["recipe"] in possible(game, inside[:-1]) and o["recipe"] not in possible(game, inside)]
+        return text + (f". Rules out the {' and '.join(lost)} order here" if lost else "")
+    if goal.kind in ("collect", "serve"):
+        recipe = next(iter(made_by(game, chef, goal)), None)
+        left = due(game, recipe) if recipe else None
+        pot = game.state.objects.get(goal.pot)
+        state = "" if goal.kind == "serve" else ", ready" if pot.is_ready else f", ready in {pot.cook_time_remaining}"
+        return f"{recipe or 'Unlisted soup'}, {worth(game, recipe)} points{state}" + (f", order due in {left}" if left is not None else "")
+    return ""
+
+
+def outcome(game, chef, name):
+    """What choosing a goal leads to: used to tell a real choice from two ways to the same soup."""
+    goal = goals(game).get(name)
+    if goal is None:
+        return name
+    return (goal.kind, toward(game, goal) if goal.kind == "add" else tuple(made_by(game, chef, goal)))
+
+
+def menu(game, chef):
     """Goals that are possible now: {name: {label, ticks, facts}}. Always includes wait."""
     out = {}
     for o in options(game, chef):
-        if not o["reason"] and o["name"] not in vetoed:
-            out[o["name"]] = {"label": o["label"], "ticks": o["ticks"], "facts": facts(game, chef, goals(game)[o["name"]], o["ticks"])}
-    out["wait"] = {"label": "Wait", "ticks": WAIT_TICKS, "facts": "do nothing for a moment; scores nothing by itself"}
+        if not o["reason"]:
+            out[o["name"]] = {"label": o["label"], "ticks": o["ticks"], "facts": facts(game, chef, goals(game)[o["name"]], o["ticks"]), "short": short(game, chef, goals(game)[o["name"]])}
+    out["wait"] = {"label": "Wait", "ticks": WAIT_TICKS, "facts": "do nothing for a moment; scores nothing by itself", "short": "Scores nothing by itself"}
     return out
 
 
@@ -400,7 +427,6 @@ class Teammate:
         self.owner = None  # who set the current goal: "human" or "ai"
         self.decision = None  # last decision, for display
         self.asking = None  # {"until": tick, "choices": [...]} while waiting for the player
-        self.vetoes = {}  # goal name: tick it expires
         self.calls, self.cost = 0, 0.0
         self.note = None
         self._pending = 0  # id of the call in flight, 0 if none
@@ -434,7 +460,6 @@ class Teammate:
         self.asking, self._pending, self._judging = None, 0, 0
         self.talk.card = None
         self.owner = "human" if name else None
-        self.vetoes.pop(name, None)
         self._wait_until = 0 if name else self.game.state.timestep + WAIT_TICKS
 
     def replan(self, why):
@@ -537,14 +562,10 @@ class Teammate:
         self.talk.card = None
         if reply not in ("insist", "idea", "withdraw", "cancel"):
             raise ValueError("unknown answer")
-        if reply == "insist" and card["kind"] == "veto":
-            self.veto(card["goal"], force=True)
-        elif reply == "insist" and card["kind"] == "make":
+        if reply == "insist" and card["kind"] == "make":
             self.make(card["recipe"], force=True)
         elif reply == "insist":
             self._accept(card["goal"], force=card["kind"] == "warn")
-        elif card["kind"] == "veto":
-            self.talk.say("OK, carrying on with it.")
         elif card["kind"] == "make" and reply == "idea":
             self.make(card["prefer"], force=True)
         elif reply == "cancel" and card["kind"] == "conflict":
@@ -598,7 +619,6 @@ class Teammate:
         self.orders = [o for o in self.orders if o["rule"] != "make"]
         self._order_ids += 1
         self.orders.append({"id": self._order_ids, "rule": "make", "topics": [recipe], "until": "made", "text": f"make {recipe}", "since": len(game.served)})
-        self.vetoes = {n: t for n, t in self.vetoes.items() if goals(game)[n].kind != "add" or not advances(game, goals(game)[n], recipe)}
         needs = game.recipes[recipe]["ingredients"]
         counts = " and ".join(_count(needs.count(i), i).replace("more ", "") for i in sorted(set(needs)))
         self.talk.say(f"OK, {recipe} next: {counts}." + ("" if any(goals(game)[n].kind == "add" and not self.blocked(n) and not plan(game, 1, goals(game)[n])[0] for n in goals(game)) else " I can't add to a pot for it yet, so I'll start when I can."))
@@ -657,22 +677,17 @@ class Teammate:
                 self.orders = [o for o in self.orders if not (o["rule"] == "skip" and o["topics"] == [name])]
 
     def free(self):
-        """The player hands the choice back: vetoes and rules go."""
-        had = bool(self.vetoes or self.orders)
+        """The player hands the choice back: rules go."""
+        had = bool(self.orders)
         self.unskip()
-        self.vetoes, self.orders, self.talk.card = {}, [], None
-        self.talk.say("OK, I'll choose." + (" Your vetoes and rules are cleared." if had else ""))
+        self.orders, self.talk.card = [], None
+        self.talk.say("OK, I'll choose." + (" Your rules are cleared." if had else ""))
         if self.owner == "human":
             self.runner.set(None)
             self.owner = None
         self.replan("you left the choice to chef 2")
 
     def cancel_orders(self, order_id=None):
-        if isinstance(order_id, str):
-            self.vetoes.pop(order_id.removeprefix("veto:"), None)
-            return self.replan("you lifted a veto")
-        if order_id is None:
-            self.vetoes = {}
         for o in self.orders:
             if o["rule"] == "skip" and order_id in (None, o["id"]):
                 self.game.skipped.discard(o["topics"][0])
@@ -685,8 +700,6 @@ class Teammate:
         if name == "wait" or name == "put_down":
             return None
         goal = goals(self.game)[name]
-        if name in self.vetoes:
-            return {"id": f"veto:{name}", "text": f"you vetoed {low(goal.label)}"}
         has = tags(name, goal)
         for o in self.orders:
             if o["rule"] == "make":
@@ -700,39 +713,6 @@ class Teammate:
             elif bool(has & set(o["topics"])) == (o["rule"] == "avoid"):
                 return o
         return None
-
-    def veto(self, name, force=False):
-        if name not in goals(self.game):
-            raise ValueError("unknown goal")
-        costs = [] if force or self.mode == "instructions" or self.game.done else self._veto_costs(name)
-        if costs:
-            return self.talk.object_veto(name, costs)
-        self.vetoes[name] = self.game.state.timestep + VETO_TICKS
-        if self.runner.name == name:
-            self.runner.set(None)
-        self.asking, self._pending, self._wait_until = None, 0, 0
-        self.talk.say(f"OK, I'll leave this for now: {low(goals(self.game)[name].label)}.")
-        self._force = f"you vetoed {goals(self.game)[name].label.lower()}"
-        self.tick()
-
-    def _veto_costs(self, name):
-        """What the veto would cost, judged by the last decision and the game as it is now."""
-        game, d = self.game, self.decision
-        ranking = {o["name"]: o["value"] for o in (d["ranking"] if d else [])}
-        if plan(game, 1, goals(game)[name])[0]:
-            return []
-        left = [n for n in menu(game, 1) if n not in (name, "wait", "put_down") and not self.blocked(n)]
-        if not left:
-            return ["it leaves me nothing useful to do"]
-        if name not in ranking:
-            return []
-        best = max(left, key=lambda n: ranking.get(n, 0))
-        strong = ranking[name] > OBJECT_ABOVE if d["source"] == "jev" else ranking[name] - ranking.get(best, 0) >= RULES_GAP
-        costs = costs_of(game, best, name) if strong else []
-        ticks = plan(game, 1, goals(game)[name])[1]
-        if costs and self.runner.name == name and ticks <= 4:
-            costs.append(f"I am about {ticks} ticks from finishing it")
-        return costs
 
     # Every tick
 
@@ -757,7 +737,6 @@ class Teammate:
                 self.runner.set(None)
         if self.mode == "instructions":
             return
-        self.vetoes = {n: t for n, t in self.vetoes.items() if t > now}
         if self.runner.goal is None:
             self.owner = None
         self._blocked = self._blocked + 1 if self.runner.status.startswith("Waiting for the other chef") else 0
@@ -850,7 +829,15 @@ class Teammate:
         confidence = answer.get("confidence")
         # Unsure, and nothing under way: ask rather than guess.
         unsure = confidence is not None and confidence < ASK_BELOW and len(valid) > 1 and self.runner.goal is None
-        chosen = None if unsure or not valid else valid[0][0]
+        chosen = valid[0][0] if valid else None
+        if unsure:
+            top = [n for n, _ in valid[:2]]
+            real = [n for n in top if n not in ("wait", "put_down")]
+            # Two ways to the same soup, or work against idling, is not worth a question: take the quicker job.
+            if len(real) < 2 or outcome(game, 1, top[0]) == outcome(game, 1, top[1]):
+                unsure, chosen = False, min(real or top, key=lambda n: plan(game, 1, goals(game)[n])[1] if n in goals(game) else WAIT_TICKS)
+            else:
+                chosen = None
         self.asking = {"until": now + ASK_TICKS, "choices": [n for n, _ in valid[:2]]} if unsure else None
         self.decision = {
             "tick": now, "why": why, "source": source, "chosen": chosen, "confidence": confidence, "seconds": answer.get("seconds"),
@@ -887,7 +874,7 @@ class Teammate:
     def _start(self, name):
         if name == "wait":
             self.runner.set(None)
-            self.runner.status = "Waiting: your vetoes and rules leave little to do" if self.vetoes or self.orders else "Nothing useful to do, waiting"
+            self.runner.status = "Waiting: your rules leave little to do" if self.orders else "Nothing useful to do, waiting"
             self._wait_until = self.game.state.timestep + WAIT_TICKS
             self.owner = None
         else:
@@ -914,6 +901,5 @@ class Teammate:
         return {
             "toward": self.view_toward(), "mode": self.mode, "thinking": bool(self._pending or self._judging), "orders": self.orders, "talk": self.talk.view(), "skipped": sorted(self.game.skipped), "owner": self.owner, "decision": self.decision, "note": self.note,
             "asking": self.asking and {"left": self.asking["until"] - now, "choices": self.asking["choices"]},
-            "vetoes": {n: t - now for n, t in self.vetoes.items() if t > now},
             "calls": self.calls, "max_calls": MAX_CALLS, "cost": self.cost,
         }

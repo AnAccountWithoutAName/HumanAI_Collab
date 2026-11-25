@@ -50,6 +50,7 @@ Do not answer the message. Act types:
 - make: wants a particular soup, or says which soup is needed ("but we need tomato soup", "do the order"). Set recipe;
   an_order if they say order without naming a soup. Use make, not unclear, whenever a soup is named without a single job.
 - skip: wants chef 2 to leave one order alone or to the player ("skip the mixed order", "I'll do the tomato order"). Set recipe.
+  If the player says they will do an order themselves it is always skip, even while a question is open.
 - free: leaves the choice to chef 2 ("do something", "up to you", "get going").
 - question: asks about the game, orders, pots or chef 2 (not a reason for a choice), or says something chef 2 could comment on.
 - order: a lasting rule about what chef 2 should leave alone (rule=avoid) or limit itself to (rule=only). Set rule, topics, until.
@@ -201,7 +202,6 @@ class Talk:
                       "status": mate.runner.status, "job_set_by": mate.owner},
             "orders_left_to_player": sorted(game.skipped),
             "player_rules": [o["text"] for o in mate.orders],
-            "player_vetoes": [label[n] for n in mate.vetoes],
             "possible_jobs": {o["label"]: o["ticks"] for o in options(game, 1) if not o["reason"]},
         }
 
@@ -220,8 +220,6 @@ class Talk:
         if self.card["kind"] == "make":
             return {"go_ahead": f"make {self.card['recipe']} anyway", "take_suggestion": f"make the {self.card['prefer']} order", "withdraw": "drop it"}
         asked = labels[self.card["goal"]]
-        if self.card["kind"] == "veto":
-            return {"go_ahead": f"keep the veto: do not {asked}", "withdraw": f"let chef 2 carry on: {asked}"}
         if self.card["kind"] == "conflict":
             return {"go_ahead": f"allow an exception: {asked}", "withdraw": "keep the rule"}
         out = {"go_ahead": f"do it despite the warning: {asked}", "withdraw": f"drop it, do not: {asked}"}
@@ -300,12 +298,6 @@ class Talk:
         draft = f"I'd rather not {low(label)}: {join(costs)}. I suggest {low(better)} instead, but it's your call."
         self.explain({"verdict": "object, but the player decides", "asked": label, "costs": costs, "suggest": better, "scores": scores}, draft)
 
-    def object_veto(self, name, costs):
-        label = goals(self.game)[name].label
-        self.card = {"kind": "veto", "goal": name, "costs": costs, "prefer": None}
-        draft = f"Before you veto this ({low(label)}): {join(costs)}. Veto it anyway?"
-        self.explain({"verdict": "objects to a veto and keeps going until the player decides", "vetoed_job": label, "costs_of_the_veto": costs}, draft)
-
     def which_order(self, names):
         self.card = {"kind": "which_order", "goal": None, "recipes": names}
         self.say("There is more than one order. Which should I work on?")
@@ -344,8 +336,6 @@ class Talk:
                 facts = [f"it is not possible now: {reason}"]
             elif blocked:
                 facts = [f"your rule forbids it: {blocked['text']}"]
-            elif name in mate.vetoes:
-                facts = ["you vetoed it"]
             elif name in ranking:
                 facts = [f"facts at the time: {ranking[name]['facts'] or 'nothing special'}"]
                 if score(name) and d["chosen"]:
@@ -355,8 +345,7 @@ class Talk:
             draft = f"I'm not doing this now: {low(label)}. {join(facts)[0].upper()}{join(facts)[1:]}."
             return self.explain({"verdict": "explain why not", "job": label, "facts": facts}, draft)
         if current is None:
-            held = f" You vetoed {join(low(goals(game)[n].label) for n in mate.vetoes)}." if mate.vetoes else ""
-            return self.say(f"I have no job right now. Status: {low(mate.runner.status)}.{held}")
+            return self.say(f"I have no job right now. Status: {low(mate.runner.status)}.")
         label = goals(game)[current].label
         if mate.owner == "human":
             return self.say(f"You asked for it: {low(label)}.")
@@ -370,8 +359,6 @@ class Talk:
                 facts.append("my fixed rules put it first")
         if mate.view_toward():
             facts.insert(0, f"it goes towards {mate.view_toward()}")
-        if mate.vetoes:
-            facts.append(f"you vetoed {join(low(goals(game)[n].label) for n in mate.vetoes)}")
         if mate.orders:
             facts.append(f"your rules: {join(o['text'] for o in mate.orders)}")
         draft = f"I'm doing this: {low(label)}. {join(facts)[0].upper()}{join(facts)[1:]}." if facts else f"I'm doing this: {low(label)}."
@@ -447,7 +434,7 @@ class Talk:
             self.card = None
         if self.card and self.card["goal"]:
             reason = plan(game, 1, goals(game)[self.card["goal"]], force=self.card["kind"] == "warn")[0]
-            ids = [o["id"] for o in self.mate.orders] + [f"veto:{n}" for n in self.mate.vetoes]
+            ids = [o["id"] for o in self.mate.orders]
             order_gone = self.card["kind"] == "conflict" and self.card["order"] not in ids
             if reason or order_gone:
                 self.card = None

@@ -51,7 +51,7 @@ other chef and carries the goal out.
 | Only what you ask | Follows direct instructions and nothing else |
 
 It decides again only when something happens: it is free, stuck or blocked, an order arrives or closes, a soup is
-ready, you change a pot, or you veto a goal or change a rule. Every decision and message is written to `logs/`.
+ready, you change a pot, or you change a rule. Every decision and message is written to `logs/`.
 
 ## Talking with chef 2
 
@@ -68,7 +68,7 @@ Press `C` to type, or use the buttons. Who does what:
 |---|---|
 | Impossible | Refuses, says why and what would help |
 | Harmful (spoils a pot, cannot finish in time) | Warns, and needs a button press to go ahead |
-| A veto, or a soup, with a clear cost (such as another order) | Objects; you choose |
+| A soup, with a clear cost (such as another order) | Objects; you choose |
 | Much worse than another option, with a cost the code can name | Objects and suggests; you choose |
 | Anything else | Does it |
 
@@ -85,7 +85,7 @@ template. This check is simple and cannot catch every bad wording. Without a key
 |---|---|
 | Game, recipe book, order queue, human control of both chefs | Implemented |
 | Goals, pathfinding, yielding to the other chef, manual goal panel | Implemented |
-| Rule and Jev planners, ranked goals with probabilities, veto, asking when unsure, decision log | Implemented |
+| Rule and Jev planners, ranked goals with probabilities, asking when unsure, decision log | Implemented |
 | Typed messages, refusals and objections, lasting rules, help requests, explanations | Implemented |
 | Evaluation against baselines | Planned |
 
@@ -131,8 +131,7 @@ template. This check is simple and cannot catch every bad wording. Without a key
   the same 5 seeds: open 226 to 254, split 182 to 188. Free answers invented reasons, so claims about the past,
   promises and causes are now rejected there too.
 - **2026-11-25, telling instead of vetoing.** Veto buttons were removed from the interface and the panel for telling
-  chef 2 what to do moved beside the game: a veto takes control, while a request chef 2 can answer is coordination. The
-  veto logic stays in `planner.py` but nothing on the page uses it. Lasting rules cover "leave that to me".
+  chef 2 what to do moved beside the game: a veto takes control, while a request chef 2 can answer is coordination. Lasting rules cover "leave that to me".
 - **2026-11-25, order queue.** One order at a time meant that reprioritising was only "switch to the rush". Up to three
   orders now overlap, and the facts say which orders each job helps and whether one can still be met. Chef 2 compares
   orders when it objects, asks which one "the order" means, and can be told to leave one to the player. Orders are
@@ -140,6 +139,8 @@ template. This check is simple and cannot catch every bad wording. Without a key
   kitchen, scripted rule-based chef 1, mean score and orders met of 30): open, rules 260 (21), Jev 272 (21); split, rules
   216 (17), Jev 234 (20). The gap is smaller than before the queue, and Jev is not repeatable: one seed gave 200 and then
   300 with the same settings. Scores from before the queue are not comparable.
+- **2026-11-25, tidying.** Veto code removed. Option cards show one line; the full facts appear on hover and go to Jev.
+  Chef 2 no longer asks "Not sure" between two ways to the same soup, or between working and waiting.
 
 ## Reused material
 
