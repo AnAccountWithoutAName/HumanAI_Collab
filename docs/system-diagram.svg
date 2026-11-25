@@ -1,64 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 800" font-family="Segoe UI, Arial, sans-serif" font-size="15">
-  <title>System diagram of Kitchen Teammate</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 560" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+  <title>Adaptive goal planning architecture</title>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#33403e"/></marker>
     <style>
       .b{fill:#eaf3f0;stroke:#17635c;stroke-width:2}.ai{fill:#fdebdc;stroke:#c75f14;stroke-width:2}.h{fill:#e3ecf8;stroke:#2463b0;stroke-width:2}
-      .s{fill:#f5f1dd;stroke:#8a7420;stroke-width:2;stroke-dasharray:3 4}.p{fill:#fff;stroke:#777;stroke-width:2;stroke-dasharray:9 6}
-      .l{fill:none;stroke:#33403e;stroke-width:2;marker-end:url(#a)}.d{fill:none;stroke:#777;stroke-width:2;stroke-dasharray:9 6;marker-end:url(#a)}
-      .t{font-weight:600;text-anchor:middle;fill:#1d2b2a}.n{font-size:13px;text-anchor:middle;fill:#43514f}.e{font-size:13px;fill:#33403e}
+      .l{fill:none;stroke:#33403e;stroke-width:2;marker-end:url(#a)}.w{fill:none;stroke:#33403e;stroke-width:2;marker-end:url(#a);marker-start:url(#a)}
+      .t{font-weight:600;text-anchor:middle;fill:#1d2b2a}.n{font-size:14px;text-anchor:middle;fill:#43514f}.e{font-size:14px;fill:#33403e}.m{font-size:14px;fill:#8a3d05;font-weight:600}
     </style>
   </defs>
-  <rect width="1160" height="800" fill="#fff"/>
+  <rect width="1040" height="560" fill="#fff"/>
 
-  <rect class="h" x="30" y="30" width="200" height="60" rx="8"/><text class="t" x="130" y="57">Player (chef 1)</text><text class="n" x="130" y="77">goals, moves, words</text>
-  <rect class="s" x="30" y="120" width="200" height="54" rx="8"/><text class="t" x="130" y="143">Scripted chef 1</text><text class="n" x="130" y="162">trials only</text>
-  <rect class="b" x="400" y="30" width="360" height="60" rx="8"/><text class="t" x="580" y="57">Browser interface</text><text class="n" x="580" y="77">board, orders, goals, chat, choice cards</text>
-  <rect class="p" x="930" y="30" width="200" height="60" rx="8"/><text class="t" x="1030" y="57">Speech input</text><text class="n" x="1030" y="77">planned</text>
-  <path class="l" d="M230 50H398"/><text class="e" x="262" y="43">keys, clicks, text</text>
-  <path class="l" d="M400 76H232"/><text class="e" x="262" y="93">feedback</text>
-  <path class="d" d="M930 60H762"/>
+  <rect class="h" x="30" y="30" width="180" height="70" rx="8"/><text class="t" x="120" y="71">Human</text>
+  <rect class="b" x="330" y="30" width="180" height="70" rx="8"/><text class="t" x="420" y="71">Interface</text>
+  <rect class="ai" x="800" y="30" width="210" height="70" rx="8"/><text class="t" x="905" y="60">Haiku</text><text class="n" x="905" y="83">understands and words</text>
+  <path class="w" d="M212 65H328"/><text class="e" x="226" y="56">input, feedback</text>
+  <path class="l" d="M510 52H798"/><text class="e" x="610" y="44">message</text>
+  <path class="l" d="M800 80H512"/><text class="e" x="610" y="98">reply, checked</text>
 
-  <rect class="b" x="30" y="255" width="200" height="80" rx="8"/><text class="t" x="130" y="285">Game engine</text><text class="n" x="130" y="305">kitchen, pots, score</text><text class="n" x="130" y="322">order queue</text>
-  <path class="l" d="M130 174V253"/><text class="e" x="140" y="218">chef 1 moves</text>
-  <path class="l" d="M430 90V222H180V253"/><text class="e" x="255" y="214">chef 1 moves</text>
+  <rect class="h" x="30" y="290" width="180" height="80" rx="8"/><text class="t" x="120" y="323">Environment</text><text class="n" x="120" y="347">kitchen benchmark</text>
+  <rect class="b" x="310" y="290" width="180" height="80" rx="8"/><text class="t" x="400" y="323">Context builder</text><text class="n" x="400" y="347">possible goals, effects</text>
+  <rect class="ai" x="590" y="290" width="140" height="80" rx="8"/><text class="t" x="660" y="323">Jev</text><text class="n" x="660" y="347">scores goals</text>
+  <rect class="b" x="820" y="290" width="190" height="80" rx="8"/><text class="t" x="915" y="323">Guard</text><text class="n" x="915" y="347">act, ask, object, refuse</text>
 
-  <rect class="b" x="310" y="255" width="210" height="80" rx="8"/><text class="t" x="415" y="285">Context builder</text><text class="n" x="415" y="305">state, possible goals</text><text class="n" x="415" y="322">costs, consequences</text>
-  <path class="l" d="M230 295H308"/><text class="e" x="243" y="287">state</text>
+  <path class="w" d="M370 102V180H120V288"/><text class="e" x="150" y="172">human moves, display</text>
+  <path class="l" d="M210 330H308"/><text class="e" x="221" y="320">raw state</text>
+  <path class="l" d="M490 330H588"/>
+  <text class="m" x="310" y="215">game state</text><text class="e" x="310" y="234">orders, deadlines, pots,</text><text class="e" x="310" y="253">held items, recent actions</text>
+  <text class="m" x="497" y="215">goal menu</text><text class="e" x="497" y="234">time, consequences</text>
+  <path d="M539 262V322" fill="none" stroke="#8a3d05" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path d="M310 262H620" fill="none" stroke="#8a3d05" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path class="l" d="M730 330H818"/><text class="e" x="742" y="320">scores</text>
 
-  <rect class="ai" x="610" y="140" width="200" height="70" rx="8"/><text class="t" x="710" y="168">Haiku: understand</text><text class="n" x="710" y="190">text to structured act</text>
-  <path class="l" d="M710 90V138"/><text class="e" x="720" y="119">message</text>
-  <rect class="b" x="900" y="140" width="220" height="70" rx="8"/><text class="t" x="1010" y="168">Rules and requests</text><text class="n" x="1010" y="190">visible, undoable</text>
-  <path class="l" d="M810 175H898"/><text class="e" x="836" y="167">act</text>
-  <path class="l" d="M760 76H860V130H960V138"/><text class="e" x="866" y="122">clicked request</text>
+  <path class="w" d="M850 288V180H450V102"/><text class="e" x="590" y="172">requests, choices</text>
+  <path class="l" d="M900 100V288"/><text class="e" x="907" y="145">act</text>
+  <path class="l" d="M965 290V102"/><text class="e" x="972" y="145">verdict,</text><text class="e" x="972" y="163">facts</text>
 
-  <rect class="ai" x="610" y="255" width="200" height="80" rx="8"/><text class="t" x="710" y="285">Jev: choose</text><text class="n" x="710" y="305">goal scores, confidence</text><text class="n" x="710" y="322">ask for help?</text>
-  <path class="l" d="M520 280H608"/><text class="e" x="530" y="272">on events</text>
-  <rect class="b" x="610" y="385" width="200" height="60" rx="8"/><text class="t" x="710" y="411">Rule-based planner</text><text class="n" x="710" y="431">baseline and fallback</text>
-  <path class="l" d="M710 335V383"/><text class="e" x="720" y="364">failure or limit</text>
+  <rect class="b" x="590" y="388" width="140" height="42" rx="8"/><text class="n" x="660" y="414">Rules (fallback)</text>
+  <path class="l" d="M660 370V386"/>
+  <path class="l" d="M730 409H770V355H818"/>
+  <rect class="b" x="820" y="450" width="190" height="70" rx="8"/><text class="t" x="915" y="480">Memory</text><text class="n" x="915" y="503">rules, chat, decisions</text>
+  <path class="w" d="M940 372V448"/>
+  <rect class="b" x="310" y="450" width="180" height="70" rx="8"/><text class="t" x="400" y="480">Goal runner</text><text class="n" x="400" y="503">pathfinding</text>
+  <path class="l" d="M870 370V440H790V485H492"/><text class="e" x="570" y="477">approved goal</text>
+  <path class="l" d="M310 485H120V372"/><text class="e" x="180" y="477">AI moves</text>
 
-  <rect class="b" x="900" y="275" width="220" height="140" rx="8"/><text class="t" x="1010" y="302">Guard (code)</text><text class="n" x="1010" y="326">still possible?</text><text class="n" x="1010" y="347">breaks a rule?</text><text class="n" x="1010" y="368">costly request?</text><text class="n" x="1010" y="389">confident enough?</text>
-  <path class="l" d="M810 295H898"/><text class="e" x="822" y="287">proposal</text>
-  <path class="l" d="M810 415H850V390H898"/>
-  <path class="l" d="M1010 210V273"/><text class="e" x="1020" y="247">request, limits</text>
-
-  <rect class="b" x="310" y="470" width="210" height="70" rx="8"/><text class="t" x="415" y="498">Goal runner</text><text class="n" x="415" y="520">pathfinding, one move a tick</text>
-  <path class="l" d="M930 415V495H522"/><text class="e" x="640" y="488">act: approved goal</text>
-  <path class="l" d="M310 505H130V337"/><text class="e" x="150" y="498">chef 2 moves</text>
-
-  <rect class="b" x="900" y="560" width="220" height="70" rx="8"/><text class="t" x="1010" y="588">Message brief</text><text class="n" x="1010" y="610">verdict and facts only</text>
-  <path class="l" d="M1030 415V558"/><text class="e" x="944" y="455">refuse, warn,</text><text class="e" x="944" y="473">object, ask</text>
-  <rect class="ai" x="610" y="560" width="200" height="70" rx="8"/><text class="t" x="710" y="588">Haiku: word it</text><text class="n" x="710" y="610">never decides</text>
-  <path class="l" d="M900 595H812"/><text class="e" x="836" y="587">brief</text>
-  <rect class="b" x="310" y="560" width="210" height="70" rx="8"/><text class="t" x="415" y="588">Wording check</text><text class="n" x="415" y="610">otherwise use template</text>
-  <path class="l" d="M610 595H522"/><text class="e" x="545" y="587">draft</text>
-  <path class="l" d="M310 600H14V108H450V92"/><text class="e" x="24" y="592">reply to interface</text>
-  <path class="l" d="M1120 345H1146V12H580V28"/><text class="e" x="772" y="27">choice cards, ranked goals</text>
-
-  <rect class="b" x="310" y="675" width="210" height="60" rx="8"/><text class="t" x="415" y="701">Decision log</text><text class="n" x="415" y="721">scores, facts, messages</text>
-  <path class="l" d="M1080 415V540H1140V705H522"/><text class="e" x="900" y="697">every decision</text>
-  <rect class="p" x="30" y="675" width="200" height="60" rx="8"/><text class="t" x="130" y="701">Player preferences</text><text class="n" x="130" y="721">planned, learned from log</text>
-  <path class="d" d="M310 705H232"/>
-
-  <g font-size="13"><rect class="b" x="590" y="750" width="26" height="18"/><text x="624" y="764">Implemented</text><rect class="ai" x="722" y="750" width="26" height="18"/><text x="756" y="764">Implemented, AI model</text><rect class="s" x="918" y="750" width="26" height="18"/><text x="952" y="764">Simulated</text><rect class="p" x="1036" y="750" width="26" height="18"/><text x="1070" y="764">Planned</text></g>
+  <g font-size="14"><rect class="b" x="30" y="535" width="24" height="16"/><text x="62" y="548">Code</text><rect class="ai" x="125" y="535" width="24" height="16"/><text x="157" y="548">AI model</text><rect class="h" x="245" y="535" width="24" height="16"/><text x="277" y="548">Human and environment</text><text x="640" y="548">Everything shown is implemented</text></g>
 </svg>
