@@ -7,15 +7,19 @@
   :root { --ink:#20302f; --muted:#5d706e; --line:#cfdad7; --bg:#eef3f1; --card:#fff; --rush:#b3261e; }
   * { box-sizing:border-box }
   body { margin:0; padding:20px 16px; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,sans-serif }
-  main { max-width:1060px; margin:auto; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:20px }
+  main { max-width:1340px; margin:auto; display:grid; grid-template-columns:230px minmax(0,1fr) 300px; gap:20px }
   header { grid-column:1/-1; display:flex; gap:10px 28px; align-items:center; flex-wrap:wrap }
   h1 { font-size:20px; margin:0 auto 0 0 }
   .stat b { font-size:20px; font-variant-numeric:tabular-nums; margin-left:6px }
   canvas { width:100%; display:block; border-radius:8px }
   .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px }
   h2 { font-size:14px; margin:0 0 6px }
-  #rush { min-height:46px; margin:0 0 12px; padding:11px 14px; border-radius:8px; background:var(--card); border:1px solid var(--line); color:var(--muted) }
-  #rush.on { background:var(--rush); border-color:var(--rush); color:#fff; font-weight:600 }
+  #error { margin:0 0 12px; padding:11px 14px; border-radius:8px; background:var(--rush); color:#fff }
+  #orders { margin-bottom:12px; min-height:92px } #orders h2 { margin:0 0 6px }
+  .order { display:flex; align-items:center; gap:10px; padding:3px 0 } .order i { display:inline-block; width:15px; height:15px; border-radius:50% }
+  .order small { margin-left:auto } .order.active { font-size:16px } .order.active b { color:var(--rush) } .order.past { font-size:13px; color:var(--muted) }
+  .order .left { margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums }
+  .clock { height:6px; border-radius:3px; background:#e4ebe9; margin:2px 0 6px } .clock i { display:block; height:100%; border-radius:3px; background:var(--rush) }
   #hints { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px }
   #hints div { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:60px }
   ul { list-style:none; margin:0; padding:0 } li { padding:3px 0 } li span { color:var(--muted); display:inline-block; width:38px }
@@ -23,18 +27,27 @@
   button, select, input { font:inherit; padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:inherit }
   input[type=number] { width:74px } label { display:block; margin:6px 0 } p { margin:6px 0 }
   :focus-visible { outline:2px solid #17635c; outline-offset:2px }
-  .recipe { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; border:2px solid transparent }
+  .recipe { display:flex; align-items:center; gap:6px; padding:5px 4px; font-size:13px; border-radius:6px; border:2px solid transparent }
   .recipe.rush { border-color:var(--rush) }
-  .recipe i { display:inline-block; width:15px; height:15px; border-radius:50%; border:1px solid #fff } .recipe small { margin-left:auto }
+  .recipe span { white-space:nowrap } .recipe i { display:inline-block; width:15px; height:15px; border-radius:50%; border:1px solid #fff } .recipe small { margin-left:auto }
   #below { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:12px } #below .card { margin:0 }
   small { color:var(--muted) }
-  summary { cursor:pointer; font-size:14px; font-weight:600 }
   .opt { margin:8px 0; padding:6px 8px; border-radius:6px; border:1px solid var(--line) } .opt.on { border-color:#c75f14; box-shadow:0 0 0 1px #c75f14 }
   .opt .top { display:flex; gap:8px; align-items:center } .opt .top b { margin-right:auto } .opt button { font-size:12px; padding:1px 7px }
   .bar { height:5px; border-radius:3px; background:#e4ebe9; margin:4px 0 } .bar i { display:block; height:100%; border-radius:3px; background:#c75f14 }
   #asking { background:#fff4d6; border:1px solid #d9b34a; border-radius:6px; padding:8px 10px; margin-top:8px } #asking button { display:block; width:100%; text-align:left; margin-top:6px }
+  #chat { height:190px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; padding:8px; background:#f7faf9; font-size:14px }
+  #chat p { margin:0 0 7px } #chat p b { color:#c75f14 } #chat p.you b { color:#2463b0 } #chat small { margin-left:4px }
+  #say { display:flex; gap:6px; margin-top:8px } #say input { flex:1; min-width:0 }
+  #request, #card { border-radius:6px; padding:8px 10px; margin-top:8px; font-size:14px }
+  #request { background:#e2f3ea; border:1px solid #4a9c74 } #card { background:#fff4d6; border:1px solid #d9b34a }
+  #card ul { list-style:disc; padding-left:18px; margin:4px 0 } .acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px }
+  .rule { display:inline-flex; gap:6px; align-items:center; margin:8px 6px 0 0; padding:2px 4px 2px 9px; border:1px solid var(--line); border-radius:14px; font-size:13px; background:#eef3f1 } .rule button { padding:0 7px; font-size:12px; border-radius:10px }
+  #goals button.no { background:#f3f6f5; color:var(--muted) }
   #goals { display:grid; gap:5px; margin-top:8px } #goals button { display:flex; justify-content:space-between; gap:8px; text-align:left; font-size:13px; cursor:pointer }
   #goals button:disabled { background:#f3f6f5; color:var(--muted); cursor:default } #goals button.on { border-color:#c75f14; box-shadow:0 0 0 1px #c75f14 }
+  #tell { align-self:start; margin:0 }
+  @media (max-width:1100px) { main { grid-template-columns:minmax(0,1fr) 300px } #tell { grid-column:1/-1; grid-row:3 } #goals { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)) } }
   @media (max-width:780px) { main { grid-template-columns:minmax(0,1fr) } }
 </style>
 <main>
@@ -43,11 +56,14 @@
     <div class="stat">Score<b id="score">0</b></div>
     <div class="stat">Ticks left<b id="time">0</b></div>
   </header>
+  <nav class="card" id="tell" aria-label="Tell chef 2 what to do"><h2>Tell chef 2 what to do</h2><small>Chef 2 may disagree and say why. You decide.</small><div id="goals"></div></nav>
   <section>
-    <p id="rush" role="status"></p>
+    <p id="error" role="alert" hidden></p>
+    <div class="card" id="orders"><h2>Orders</h2><div id="orderlist"></div></div>
     <canvas id="board"></canvas>
     <div id="hints"><div id="h0"></div><div id="h1"></div></div>
     <div id="below">
+    <div class="card"><h2>Recipe book</h2><div id="book"></div></div>
     <div class="card">
       <h2>Game</h2>
       <label>Kitchen <select id="layout"><option value="open">Open</option><option value="split">Split (pass items over)</option></select></label>
@@ -59,6 +75,7 @@
       <h2>Controls</h2>
       <p>Chef 1 (blue): <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, use <kbd>Space</kbd></p>
       <p>Chef 2 (orange): arrow keys, use <kbd>Enter</kbd></p>
+      <p>Message chef 2: <kbd>C</kbd> (<kbd>Esc</kbd> to leave)</p>
       <p>Wait one tick: <kbd>Q</kbd> (hold to keep waiting)</p>
       <p>Fill a pot with 3 ingredients from the recipe book, wait, collect with a dish, serve at the hatch. Other mixes score 0.</p>
     </div>
@@ -66,7 +83,14 @@
     </div>
   </section>
   <aside>
-    <div class="card"><h2>Recipe book</h2><div id="book"></div></div>
+    <div class="card">
+      <h2>Talk to chef 2</h2>
+      <div id="chat" role="log" aria-live="polite" tabindex="0"></div>
+      <div id="request" hidden></div>
+      <div id="card" hidden></div>
+      <div id="rules"></div>
+      <form id="say"><input id="text" maxlength="300" placeholder="Ask, set a rule, or ask why (C)" aria-label="Message to chef 2" autocomplete="off"><button>Send</button><button type="button" id="why">Why?</button></form>
+    </div>
     <div class="card">
       <h2>Chef 2</h2>
       <label>Decides by <select id="mode"><option value="jev">Jev (AI)</option><option value="rules">Rules</option><option value="instructions">Only what you ask</option></select></label>
@@ -75,7 +99,6 @@
       <div id="rank"></div>
       <small id="meta"></small>
     </div>
-    <details class="card"><summary>Tell chef 2 what to do</summary><div id="goals"></div></details>
   </aside>
 </main>
 <script>
@@ -90,8 +113,8 @@ async function api(path, body) {
     const r = await fetch(path, body && { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error);
-    s = data; render();
-  } catch (e) { $("rush").className = "on"; $("rush").textContent = "Game server problem: " + e.message; }
+    s = data; $("error").hidden = true; render();
+  } catch (e) { $("error").hidden = false; $("error").textContent = "Game server problem: " + e.message; }
 }
 async function step(actions) {
   if (busy || !s || s.done) return;
@@ -109,6 +132,7 @@ function liveTick() {
 const typing = e => /INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName);
 addEventListener("keydown", e => {
   if (typing(e) || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.code === "KeyC") { e.preventDefault(); $("text").focus(); return; }
   const k = KEYS[e.code], live = $("live").checked;
   if (!k && e.code !== "KeyQ") return;
   e.preventDefault();
@@ -123,8 +147,13 @@ addEventListener("blur", () => held = [[], []]);
 $("live").onchange = e => { clearInterval(timer); tapped = [null, null]; held = [[], []]; if (e.target.checked) timer = setInterval(liveTick, 220); e.target.blur(); };
 $("new").onclick = e => { e.target.blur(); api("/new", { layout:$("layout").value, seed:Number($("seed").value) || 0 }); };
 $("goals").onclick = e => { const b = e.target.closest("button"); if (b) { b.blur(); api("/goal", { goal:b.dataset.goal || null }); } };
-$("asking").onclick = e => { const b = e.target.closest("button"); if (b) api("/goal", { goal:b.dataset.goal === "wait" ? null : b.dataset.goal }); };
-$("rank").onclick = e => { const b = e.target.closest("button"); if (b) api("/veto", { goal:b.dataset.veto }); };
+$("asking").onclick = e => { const b = e.target.closest("button"); if (b) api("/goal", { goal:b.dataset.goal === "wait" ? null : b.dataset.goal, direct:true }); };
+$("say").onsubmit = e => { e.preventDefault(); const t = $("text").value.trim(); if (!t) return; $("text").value = ""; $("text").blur(); api("/chat", { text:t }); };
+$("why").onclick = e => { e.target.blur(); api("/why", {}); };
+$("text").onkeydown = e => { if (e.key === "Escape") e.target.blur(); };
+$("card").onclick = e => { const b = e.target.closest("button"); if (b) b.dataset.goal ? api("/goal", { goal:b.dataset.goal }) : api("/answer", { reply:b.dataset.reply }); };
+$("request").onclick = e => { const b = e.target.closest("button"); if (b) api("/help", { ok:b.dataset.ok === "1" }); };
+$("rules").onclick = e => { const b = e.target.closest("button"); if (b) api("/order/cancel", { id:Number(b.dataset.id) }); };
 $("mode").onchange = e => { e.target.blur(); api("/mode", { mode:e.target.value }); };
 $("layout").onchange = e => e.target.blur();
 
@@ -157,6 +186,8 @@ function render() {
     if (o.ready) { ring(cx, cy, 1, "#46c66f"); word("ready", cx, cy + 17, "#fff"); }
   }
   s.pots.forEach(([x, y], i) => { disc(x * T + 13, y * T + 13, 10, "#fff"); word(i + 1, x * T + 13, y * T + 17, "#20302f", 12); });
+  // What chef 2 is asking for.
+  (s.mate.talk.request?.tiles || []).forEach(([x, y]) => { g.strokeStyle = "#2f9d63"; g.lineWidth = 6; g.strokeRect(x * T + 4, y * T + 4, T - 8, T - 8); g.lineWidth = 1; });
   s.partner.path.forEach(([x, y]) => disc(x * T + T / 2, y * T + T / 2, 6, "#c75f1488"));
   s.chefs.forEach((c, i) => {
     const cx = c.pos[0] * T + T / 2, cy = c.pos[1] * T + T / 2, [dx, dy] = c.facing;
@@ -171,42 +202,66 @@ function render() {
   if (s.done) { g.fillStyle = "#20302fcc"; g.fillRect(0, 0, cv.width, cv.height); word(`Shift over: ${s.score} points`, cv.width / 2, cv.height / 2, "#fff", 34); }
   $("score").textContent = s.score; $("time").textContent = s.horizon - s.tick;
   panels();
-  $("rush").className = s.rush ? "on" : "";
-  $("rush").textContent = s.rush ? `Rush order: ${s.rush.recipe} for double points, ${s.rush.left} ticks left` : "No rush order. Cook anything from the recipe book.";
   $("log").innerHTML = s.log.length ? [...s.log].reverse().map(l => `<li><span>${l.tick}</span>${l.text}</li>`).join("") : "<li>Nothing yet</li>";
 }
 // Rewrite an element only when its content changed, so clicks on the live clock are not swallowed.
 function put(id, html) { const e = $(id); if (e.dataset.was !== html) { e.innerHTML = html; e.dataset.was = html; } }
+function orders() {
+  const dots = n => s.recipes[n].ingredients.map(k => `<i style="background:${COLOR[k]}" title="${k}"></i>`).join(" ");
+  const open = s.orders.filter(o => o.status === "active"), past = s.orders.filter(o => o.status !== "active").reverse().slice(0, 3);
+  $("orderlist").innerHTML = (open.map(o => { const left = o.deadline - s.tick, pts = s.recipes[o.recipe].points * 2; return `<div class="order active"><span>${dots(o.recipe)}</span><b>${o.recipe}</b> ${pts} pts (double)<span class="left">${left} ticks left</span></div><div class="clock"><i style="width:${100 * left / (o.deadline - o.start)}%"></i></div>`; }).join("")
+    || `<div class="order">No rush order now. Anything in the recipe book still sells.</div>`)
+    + past.map(o => `<div class="order past"><span>${dots(o.recipe)}</span>${o.recipe}<small>${o.status === "completed" ? `✓ completed by chef ${o.chef + 1}` : "✗ expired"}, tick ${o.closed}</small></div>`).join("");
+}
+const esc = t => t.replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" })[c]);
+function talk() {
+  const t = s.mate.talk, c = t.card, r = t.request;
+  const html = t.chat.map(m => `<p class="${m.who}"><b>${m.who === "you" ? "You" : "Chef 2"}</b> ${esc(m.text)}<small>${m.via === "haiku" ? "AI wording" : ""}</small></p>`).join("")
+    + (t.busy ? "<p><small>Chef 2 is typing…</small></p>" : "") || "<p><small>No messages yet. Try “leave the tomatoes to me” or “why?”</small></p>";
+  if ($("chat").dataset.was !== html) { put("chat", html); $("chat").scrollTop = 1e6; }
+  $("request").hidden = !r;
+  put("request", r ? `<b>${esc(r.text)}</b>${r.accepted ? "<br><small>Waiting for it.</small>" : `<div class="acts"><button data-ok="1">OK</button><button data-ok="0">Can't</button></div>`}` : "");
+  $("card").hidden = !c;
+  const title = { object:"Chef 2 disagrees", warn:"This would do harm", conflict:"Your rule has a cost", clarify:"Which one?", veto:"Chef 2 objects to the veto", make:"Chef 2 disagrees" }, costs = c?.costs?.map(x => `<li>${esc(x)}</li>`).join("");
+  const acts = !c ? [] : c.kind === "object" ? [["insist", `Do it anyway: ${c.label}`], ["idea", `Use chef 2's idea: ${c.prefer_label}`], ["withdraw", "Drop it"]]
+    : c.kind === "make" ? [["insist", `Make ${c.recipe} anyway`], ["idea", `Make the rush ${c.prefer}`], ["withdraw", "Drop it"]]
+    : c.kind === "veto" ? [["withdraw", `Let it carry on: ${c.label}`], ["insist", "Veto anyway"]]
+    : c.kind === "warn" ? [["withdraw", "Drop it"], ["insist", `Do it anyway: ${c.label}`]]
+    : c.kind === "conflict" ? [["withdraw", "Keep my rule"], ["insist", `Just this once: ${c.label}`], ["cancel", "Remove the rule"]] : [["withdraw", "Never mind"]];
+  put("card", !c ? "" : `<b>${title[c.kind]}</b>${c.costs ? `<ul>${costs}</ul>` : ""}<div class="acts">${acts.map(([k, l]) => `<button data-reply="${k}">${l}</button>`).join("")}${c.choices.map(o => `<button data-goal="${o.name}">${o.label}</button>`).join("")}</div>`);
+  put("rules", s.mate.orders.map(o => `<span class="rule">Rule: ${o.text} <button data-id="${o.id}" aria-label="Undo rule: ${o.text}">Undo</button></span>`).join(""));
+}
 function mate() {
   const p = s.partner, m = s.mate, d = m.decision, now = p.goal;
   if (document.activeElement !== $("mode")) $("mode").value = m.mode;
   const who = m.owner === "human" ? " (you asked)" : "";
-  put("status", `${p.label ? `<b>${p.label}</b>${who}<br>` : ""}<small>${p.status}${m.thinking ? " · thinking…" : ""}</small>`);
+  put("status", `${p.label ? `<b>${p.label}</b>${who}${m.toward ? `<br>Towards: ${m.toward}${s.rush?.recipe === m.toward ? " (the order)" : ""}` : ""}<br>` : ""}<small>${p.status}${m.thinking ? " · thinking…" : ""}</small>`);
   const label = n => p.options.find(o => o.name === n)?.label || "Wait";
   $("asking").hidden = !m.asking;
   // The countdown is left out of the buttons' markup so that they stay put.
   put("asking", m.asking ? `<b>Not sure. Which should I do?</b><small> If you don't choose I'll take the first soon.</small>${m.asking.choices.map(n => `<button data-goal="${n}">${label(n)}</button>`).join("")}` : "");
   const jev = d?.source === "jev", top = Math.max(1, ...(d?.ranking || []).map(o => o.value));
-  put("rank", !d || m.mode === "instructions" ? "" : `<p><small>Decided because ${d.why}</small></p>` + d.ranking.slice(0, 3).map(o =>
-    `<div class="opt${o.name === now ? " on" : ""}"><div class="top"><b>${o.label}</b><span>${jev ? Math.round(o.value * 100) + "%" : ""}</span>${o.name === "wait" ? "" : `<button data-veto="${o.name}" title="Stop chef 2 choosing this for 40 ticks">Veto</button>`}</div>
-     <div class="bar"><i style="width:${Math.max(0, 100 * o.value / top)}%"></i></div><small>~${o.ticks} ticks. ${o.facts}</small></div>`).join("")
-    + (Object.keys(m.vetoes).length ? `<p><small>Vetoed for now: ${Object.keys(m.vetoes).map(label).join(", ")}. Asking for it lifts the veto.</small></p>` : ""));
-  put("meta", m.mode === "instructions" ? "Chef 2 acts only when you tell it to." : m.note || (jev ? `Confidence ${Math.round(d.confidence * 100)}%, answered in ${d.seconds.toFixed(2)} s. ${m.calls}/${m.max_calls} calls, $${m.cost.toFixed(4)}` : d ? "Chosen by rules" : ""));
+  put("rank", !d || m.mode === "instructions" ? "" : `<p><small>Prompted by: ${d.why}</small></p>` + d.ranking.slice(0, 3).map(o =>
+    `<div class="opt${o.name === now ? " on" : ""}"><div class="top"><b>${o.label}</b><span>${jev ? Math.round(o.value * 100) + "%" : ""}</span></div>
+     <div class="bar"><i style="width:${Math.max(0, 100 * o.value / top)}%"></i></div><small>~${o.ticks} ticks. ${o.facts}</small></div>`).join(""));
+  put("meta", m.mode === "instructions" ? "Chef 2 acts only when you tell it to." : m.note || (jev ? `Confidence ${Math.round(d.confidence * 100)}%, answered in ${d.seconds.toFixed(2)} s. ${m.calls}/${m.max_calls} calls, $${(m.cost + m.talk.cost).toFixed(4)}` : d ? "Chosen by rules" : ""));
 }
 // Between key presses nothing else would fetch a finished answer.
-setInterval(() => { if (s?.mate.thinking && !busy) api("/state"); }, 150);
+setInterval(() => { if ((s?.mate.thinking || s?.mate.talk.busy) && !busy) api("/state"); }, 150);
 function panels() {
   const p = s.partner, rushed = n => s.rush?.recipe === n;
   $("book").innerHTML = Object.entries(s.recipes).map(([n, r]) => `<div class="recipe${rushed(n) ? " rush" : ""}"><span>${r.ingredients.map(k => `<i style="background:${COLOR[k]}" title="${k}"></i>`).join("")}</span><b>${n}</b><small>${r.points * (rushed(n) ? 2 : 1)} pts</small></div>`).join("")
     + `<small>Yellow is onion, red is tomato. Any order. All cook in 20 ticks.</small>`;
+  orders();
   mate();
+  talk();
   // Update buttons in place: rebuilding them every tick would swallow clicks on the live clock.
   const all = [...p.options, { name:"", label:"Stop", ticks:null, reason:null }];
   if ([...$("goals").children].map(b => b.dataset.goal).join() !== all.map(o => o.name).join())
     $("goals").innerHTML = all.map(o => `<button data-goal="${o.name}"><span></span><small></small></button>`).join("");
   all.forEach((o, i) => {
     const b = $("goals").children[i], on = o.name !== "" && o.name === p.goal;
-    b.className = on ? "on" : ""; b.disabled = !!o.reason && !on;
+    b.className = on ? "on" : o.reason ? "no" : "";  // still clickable: chef 2 explains why not
     b.firstChild.textContent = o.label; b.lastChild.textContent = o.reason || (o.ticks ? `~${o.ticks} ticks` : "");
   });
 }

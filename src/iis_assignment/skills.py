@@ -113,14 +113,17 @@ def _legs(game, chef, goal):
     return legs
 
 
-def plan(game, chef, goal):
-    """(reason it cannot be done or None, estimated ticks). Ignores the other chef's position."""
+def plan(game, chef, goal, force=False):
+    """(reason it cannot be done or None, estimated ticks). Ignores the other chef's position.
+
+    `force` allows adding an ingredient that spoils the pot.
+    """
     pot = game.state.objects.get(goal.pot) if goal.pot else None
     held = _held(game, chef)
     if goal.kind == "add":
         if pot and pot.is_full:
             return "pot is full", None
-        if not game.fits(pot.ingredients if pot else [], goal.item):
+        if not force and not game.fits(pot.ingredients if pot else [], goal.item):
             return "makes no recipe", None
     if goal.kind == "collect" and not (pot and pot.is_full):
         return "not cooking", None
@@ -155,13 +158,14 @@ class Runner:
         self.game, self.chef = game, chef
         self.rng = random.Random(f"{game.seed}-{chef}")  # chefs must not hesitate in step
         self.name = self.goal = None
+        self.force = False
         self.status, self.path = "No goal", ()
         self._tried = self._before = self._partner = None
 
-    def set(self, name):
+    def set(self, name, force=False):
         """Choose a goal by name, or None to stop."""
         self.goal = goals(self.game)[name] if name else None
-        self.name, self.path, self._tried = name, (), None
+        self.name, self.path, self._tried, self.force = name, (), None, force
         self.status = "Starting" if name else "No goal"
 
     def act(self):
@@ -173,7 +177,7 @@ class Runner:
         self._tried, self._before, self._partner, self.path = None, player.position, partner, ()
         if not self.goal:
             return self._make_way(player, partner_moving)
-        reason, _ = plan(self.game, self.chef, self.goal)
+        reason, _ = plan(self.game, self.chef, self.goal, self.force)
         if reason:
             self.status = f"Stuck: {reason}"
             return self._make_way(player, partner_moving)

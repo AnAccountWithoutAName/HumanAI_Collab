@@ -35,6 +35,8 @@ class GameTest(unittest.TestCase):
         play(g, "e")
         self.assertEqual(g.score, 40)
         self.assertIsNone(g.rush)
+        self.assertEqual([(o["status"], o["chef"]) for o in g.orders], [("completed", 0)])
+        self.assertFalse(any("ush" in e["text"] for e in g.log))
 
     def test_rush_expires(self):
         g = Game("open")
@@ -43,6 +45,7 @@ class GameTest(unittest.TestCase):
         self.assertEqual(g.snapshot()["rush"], {"recipe": "tomato soup", "left": RUSH_TICKS})
         play(g, "." * RUSH_TICKS)
         self.assertIsNone(g.rush)
+        self.assertEqual(g.snapshot()["orders"][0]["status"], "expired")
 
     def test_same_seed_same_rushes(self):
         self.assertEqual(Game(seed=3).rush_schedule, Game(seed=3).rush_schedule)

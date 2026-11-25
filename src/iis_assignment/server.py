@@ -9,7 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .game import ACTIONS, LAYOUTS, Game
-from .planner import ROOT, Teammate, api_key
+from .keys import ROOT, api_key
+from .planner import Teammate
 
 PAGE = Path(__file__).parent / "static" / "index.html"
 lock = threading.Lock()
@@ -54,8 +55,21 @@ class Handler(BaseHTTPRequestHandler):
                     # None means "chef 2 is not human-controlled this tick"
                     game.step([first, mate.act() if second is None else second])
                     mate.tick()
-                elif self.path == "/goal":  # None stops chef 2
-                    mate.instruct(body["goal"])
+                elif self.path == "/goal":  # None stops chef 2; "direct" skips the verdict (answers to chef 2's own question)
+                    if body["goal"] is None or body.get("direct"):
+                        mate.instruct(body["goal"])
+                    else:
+                        mate.propose(body["goal"])
+                elif self.path == "/chat":
+                    mate.talk.hear(body["text"])
+                elif self.path == "/why":
+                    mate.talk.why()
+                elif self.path == "/answer":  # an objection, warning or conflict
+                    mate.answer(body["reply"])
+                elif self.path == "/help":  # chef 2's request
+                    mate.talk.answer_request(bool(body["ok"]))
+                elif self.path == "/order/cancel":
+                    mate.cancel_orders(body["id"])
                 elif self.path == "/veto":
                     mate.veto(body["goal"])
                 elif self.path == "/mode":

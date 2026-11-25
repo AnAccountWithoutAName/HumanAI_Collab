@@ -64,6 +64,8 @@ class Game:
         self.pots = sorted(self.mdp.get_pot_locations())
         self.state = self.mdp.get_standard_start_state()
         self.score, self.log = 0, []
+        self.served = []  # recipe names in the order they were served
+        self.orders = []  # every rush order so far, kept apart from the event log
         self.last = ["stay", "stay"]
         self.rush = None  # (recipe name, deadline tick)
         self.rush_schedule = self._make_schedule(random.Random(seed))
@@ -99,11 +101,11 @@ class Game:
 
     def _served(self, chef, soup):
         name = recipe_name(soup.ingredients)
+        self.served.append(name)
         reward = RECIPES[name]["points"] if name else 0
         if self.rush and name == self.rush[0]:
             reward *= 2
-            self.rush = None
-            self._say("Rush order completed")
+            self._close_order("completed", chef)
         self.score += reward
         self._say(f"Chef {chef + 1} served {name or 'a soup nobody ordered'} (+{reward})")
 
@@ -115,11 +117,14 @@ class Game:
     def _update_rush(self):
         now = self.state.timestep
         if self.rush and now >= self.rush[1]:
-            self.rush = None
-            self._say("Rush order expired")
+            self._close_order("expired")
         if now in self.rush_schedule:
             self.rush = (self.rush_schedule[now], now + RUSH_TICKS)
-            self._say(f"RUSH ORDER: {self.rush[0]}, double points")
+            self.orders.append({"recipe": self.rush[0], "start": now, "deadline": self.rush[1], "status": "active"})
+
+    def _close_order(self, status, chef=None):
+        self.orders[-1].update(status=status, chef=chef, closed=self.state.timestep)
+        self.rush = None
 
     def _say(self, text):
         self.log.append({"tick": self.state.timestep, "text": text})
@@ -179,6 +184,7 @@ class Game:
                 for i, p in enumerate(self.state.players)
             ],
             "objects": [self._object(o) for o in self.state.objects.values()],
+            "orders": self.orders,
             "recipes": RECIPES,
             "pots": self.pots,
             "partner": {

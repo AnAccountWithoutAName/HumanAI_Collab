@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest import mock
 
-from iis_assignment import planner
+from iis_assignment import keys, planner
 from iis_assignment.game import Game
 from iis_assignment.planner import Teammate, context, menu, rules
 from iis_assignment.skills import Runner
@@ -22,7 +22,7 @@ class FakeJev:
     def __init__(self, *prefer, confidence=0.9, fail=False):
         self.prefer, self.confidence, self.fail, self.seen = prefer, confidence, fail, []
 
-    def __call__(self, state, choices):
+    def __call__(self, state, choices, help_choices=None):
         self.seen.append((state, choices))
         if self.fail:
             raise OSError("no network")
@@ -69,7 +69,7 @@ class ContextTest(unittest.TestCase):
         facts = {n: c["facts"] for n, c in menu(game, 1).items()}
         self.assertIn("completes mixed soup, worth 30", facts["add_tomato_pot1"])
         self.assertIn("rules out the rush order", facts["add_tomato_pot1"])
-        self.assertIn("tomato soup (40 points) would need 2 more tomatoes", facts["add_tomato_pot2"])
+        self.assertIn("tomato soup (the rush order, 40 points) would need 2 more tomatoes", facts["add_tomato_pot2"])
 
 
 class TeammateTest(unittest.TestCase):
@@ -137,7 +137,7 @@ class TeammateTest(unittest.TestCase):
         mate.tick()
         mate.veto("add_onion_pot1")
         self.assertNotEqual(game.partner.name, "add_onion_pot1")
-        self.assertNotIn("add_onion_pot1", mate.ask.seen[-1][1])
+        self.assertTrue(mate.blocked("add_onion_pot1"))
         mate.instruct("add_onion_pot1")
         self.assertEqual(mate.vetoes, {})
         mate.veto("add_onion_pot1")
@@ -221,8 +221,8 @@ class TeammateTest(unittest.TestCase):
         self.assertEqual(game.partner.name, "add_onion_pot1")
 
     def test_missing_key_is_none(self):
-        with mock.patch.dict("os.environ", {}, clear=True), mock.patch.object(planner, "ROOT", planner.Path("nowhere")):
-            self.assertIsNone(planner.api_key())
+        with mock.patch.dict("os.environ", {}, clear=True), mock.patch.object(keys, "ROOT", keys.Path("nowhere")):
+            self.assertIsNone(keys.api_key())
 
 
 if __name__ == "__main__":
