@@ -38,6 +38,8 @@ ticks). An ordered soup pays double; a missed order only loses the bonus. The se
 
 Anything else scores 0.
 
+![System diagram](docs/system-diagram.svg)
+
 ## How chef 2 acts
 
 A planner never chooses moves. It chooses a named goal such as `add_onion_pot1` from a menu that gives
@@ -87,7 +89,8 @@ template. This check is simple and cannot catch every bad wording. Without a key
 | Goals, pathfinding, yielding to the other chef, manual goal panel | Implemented |
 | Rule and Jev planners, ranked goals with probabilities, asking when unsure, decision log | Implemented |
 | Typed messages, refusals and objections, lasting rules, help requests, explanations | Implemented |
-| Evaluation against baselines | Planned |
+| Informal trial against baselines, with a scripted chef 1 | Simulated |
+| Speech input, learned player preferences, user study | Planned |
 
 ## Code
 
@@ -141,6 +144,8 @@ template. This check is simple and cannot catch every bad wording. Without a key
   300 with the same settings. Scores from before the queue are not comparable.
 - **2026-11-25, tidying.** Veto code removed. Option cards show one line; the full facts appear on hover and go to Jev.
   Chef 2 no longer asks "Not sure" between two ways to the same soup, or between working and waiting.
+
+- **Submission.** Added the system diagram. Storyboard captures in `docs/storyboards/` use the live system with scripted input.
 
 ## Reused material
 
