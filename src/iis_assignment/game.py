@@ -52,6 +52,7 @@ def recipe_name(ingredients):
 class Game:
     def __init__(self, layout="open", seed=0):
         self.layout, self.seed = layout, seed
+        self.recipes, self.horizon = RECIPES, HORIZON
         self.mdp = OvercookedGridworld.from_grid(
             LAYOUTS[layout],
             {

@@ -13,6 +13,9 @@ uv run iis-assignment 8123       # use another port
 uv run python -m unittest discover tests
 ```
 
+The AI teammate needs an [OpenRouter](https://openrouter.ai) key with credit, in a file called `.env`:
+`OPENROUTER_API_KEY=...`. Without one, chef 2 uses the rules.
+
 | | Move | Use |
 |---|---|---|
 | Chef 1 (blue) | W A S D | Space |
@@ -38,7 +41,18 @@ Anything else scores 0.
 
 A planner never chooses moves. It chooses a named goal such as `add_onion_pot1` from a menu that gives
 each goal's estimated cost, or the reason it is impossible. The goal layer then finds a path around the
-other chef and carries the goal out. At present the person is the planner, using the **Ask chef 2** panel.
+other chef and carries the goal out. 
+
+| Chef 2 decides by | Meaning |
+|---|---|
+| Jev (AI) | The Jev decision model gives each possible goal a probability |
+| Rules | Hand-written scores over the same goals; also the fallback if Jev fails |
+| Only what you ask | Follows direct instructions and nothing else |
+
+It decides again only when something happens: it is free, stuck or blocked, a rush starts or ends, a soup is
+ready, or you change a pot or veto a goal. Your direct instruction is not replaced by the AI's own choice. If Jev's
+confidence is low while chef 2 is free, it asks you. Jev gives no reasons, so the panel shows facts computed from
+the game instead. Every decision is written to `logs/`.
 
 ## Status
 
@@ -46,14 +60,15 @@ other chef and carries the goal out. At present the person is the planner, using
 |---|---|
 | Game, recipe book, rush orders, human control of both chefs | Implemented |
 | Goals, pathfinding, yielding to the other chef, manual goal panel | Implemented |
-| Planner that chooses goals (rules, then LLM) | Planned |
-| Typed instructions, ranked goals with reasons, veto and conflict prompt | Planned |
+| Rule and Jev planners, ranked goals with probabilities, veto, asking when unsure, decision log | Implemented |
+| Typed messages, standing orders, help requests, conflict prompt, Haiku wording | Planned |
 | Evaluation against baselines | Planned |
 
 ## Code
 
 - `src/iis_assignment/game.py`: layouts, rush orders, scoring, state view
 - `src/iis_assignment/skills.py`: goals, pathfinding and the runner that carries out a goal
+- `src/iis_assignment/planner.py`: state given to planners, rules, Jev, triggers and checks on every answer
 - `src/iis_assignment/server.py`: local web server
 - `src/iis_assignment/static/index.html`: interface
 - `src/overcooked_ai_py/`: third-party engine (see below)
@@ -70,6 +85,11 @@ other chef and carries the goal out. At present the person is the planner, using
   goal layer. A random two-chef test exposed two deadlocks: chefs mirroring each other's detours, and each
   waiting for the tile the other occupied. Fixed with independent hesitation and by letting a waiting chef
   move closer. An idle chef now also steps aside when walked into.
+- **2026-11-25, choosing goals.** Added the rule and Jev planners. Chose Jev over Haiku for decisions after timing
+  one call each: about 7 s for Haiku through the command line, 0.2 to 0.5 s for Jev. First trial, 5 seeds per
+  kitchen with a scripted rule-based chef 1 (mean score): open, instruction-only with no instructions given 172,
+  rules 184, Jev 226; split, 0, 154 and 182. Jev beat the rules in 9 of 10 games. This is a small trial with no
+  people, seeds only change the rush orders, Jev's reply time was not counted, and the rules are simple.
 
 ## Reused material
 

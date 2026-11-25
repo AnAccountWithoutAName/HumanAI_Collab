@@ -15,3 +15,6 @@ wheels/
 # Not for the public repo
 slides/
 IIS_Literature_Review.pdf
+
+# Decision logs
+logs/

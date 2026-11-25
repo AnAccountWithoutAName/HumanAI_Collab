@@ -3,15 +3,30 @@
 import json
 import sys
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .game import ACTIONS, LAYOUTS, Game
+from .planner import ROOT, Teammate, api_key
 
 PAGE = Path(__file__).parent / "static" / "index.html"
 lock = threading.Lock()
-game = Game()
+
+
+def new_game(layout="open", seed=0, mode=None):
+    global game, mate
+    game = Game(layout, seed)
+    log = ROOT / "logs" / f"{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+    mate = Teammate(game, mode or ("jev" if api_key() else "rules"), lock, log)
+
+
+def view():
+    return {**game.snapshot(), "mate": mate.view()}
+
+
+new_game()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -20,30 +35,34 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         elif self.path == "/state":
             with lock:
-                self._json(200, game.snapshot())
+                self._json(200, view())
         else:
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        global game
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             with lock:
                 if self.path == "/new":
                     if body["layout"] not in LAYOUTS:
                         raise ValueError("unknown layout")
-                    game = Game(body["layout"], int(body["seed"]))
+                    new_game(body["layout"], int(body["seed"]), mate.mode)
                 elif self.path == "/step":
                     first, second = body["actions"]
                     if first not in ACTIONS or (second is not None and second not in ACTIONS):
                         raise ValueError("unknown action")
                     # None means "chef 2 is not human-controlled this tick"
-                    game.step([first, game.partner.act() if second is None else second])
+                    game.step([first, mate.act() if second is None else second])
+                    mate.tick()
                 elif self.path == "/goal":  # None stops chef 2
-                    game.partner.set(body["goal"])
+                    mate.instruct(body["goal"])
+                elif self.path == "/veto":
+                    mate.veto(body["goal"])
+                elif self.path == "/mode":
+                    mate.set_mode(body["mode"])
                 else:
                     return self._json(404, {"error": "not found"})
-                self._json(200, game.snapshot())
+                self._json(200, view())
         except (ValueError, KeyError, TypeError) as error:
             self._json(400, {"error": str(error)})
 

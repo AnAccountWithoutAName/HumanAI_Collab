@@ -28,6 +28,11 @@
   .recipe i { display:inline-block; width:15px; height:15px; border-radius:50%; border:1px solid #fff } .recipe small { margin-left:auto }
   #below { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:12px } #below .card { margin:0 }
   small { color:var(--muted) }
+  summary { cursor:pointer; font-size:14px; font-weight:600 }
+  .opt { margin:8px 0; padding:6px 8px; border-radius:6px; border:1px solid var(--line) } .opt.on { border-color:#c75f14; box-shadow:0 0 0 1px #c75f14 }
+  .opt .top { display:flex; gap:8px; align-items:center } .opt .top b { margin-right:auto } .opt button { font-size:12px; padding:1px 7px }
+  .bar { height:5px; border-radius:3px; background:#e4ebe9; margin:4px 0 } .bar i { display:block; height:100%; border-radius:3px; background:#c75f14 }
+  #asking { background:#fff4d6; border:1px solid #d9b34a; border-radius:6px; padding:8px 10px; margin-top:8px } #asking button { display:block; width:100%; text-align:left; margin-top:6px }
   #goals { display:grid; gap:5px; margin-top:8px } #goals button { display:flex; justify-content:space-between; gap:8px; text-align:left; font-size:13px; cursor:pointer }
   #goals button:disabled { background:#f3f6f5; color:var(--muted); cursor:default } #goals button.on { border-color:#c75f14; box-shadow:0 0 0 1px #c75f14 }
   @media (max-width:780px) { main { grid-template-columns:minmax(0,1fr) } }
@@ -63,10 +68,14 @@
   <aside>
     <div class="card"><h2>Recipe book</h2><div id="book"></div></div>
     <div class="card">
-      <h2>Ask chef 2</h2>
+      <h2>Chef 2</h2>
+      <label>Decides by <select id="mode"><option value="jev">Jev (AI)</option><option value="rules">Rules</option><option value="instructions">Only what you ask</option></select></label>
       <div id="status" role="status"></div>
-      <div id="goals"></div>
+      <div id="asking" hidden></div>
+      <div id="rank"></div>
+      <small id="meta"></small>
     </div>
+    <details class="card"><summary>Tell chef 2 what to do</summary><div id="goals"></div></details>
   </aside>
 </main>
 <script>
@@ -114,6 +123,9 @@ addEventListener("blur", () => held = [[], []]);
 $("live").onchange = e => { clearInterval(timer); tapped = [null, null]; held = [[], []]; if (e.target.checked) timer = setInterval(liveTick, 220); e.target.blur(); };
 $("new").onclick = e => { e.target.blur(); api("/new", { layout:$("layout").value, seed:Number($("seed").value) || 0 }); };
 $("goals").onclick = e => { const b = e.target.closest("button"); if (b) { b.blur(); api("/goal", { goal:b.dataset.goal || null }); } };
+$("asking").onclick = e => { const b = e.target.closest("button"); if (b) api("/goal", { goal:b.dataset.goal === "wait" ? null : b.dataset.goal }); };
+$("rank").onclick = e => { const b = e.target.closest("button"); if (b) api("/veto", { goal:b.dataset.veto }); };
+$("mode").onchange = e => { e.target.blur(); api("/mode", { mode:e.target.value }); };
 $("layout").onchange = e => e.target.blur();
 
 const disc = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
@@ -163,11 +175,31 @@ function render() {
   $("rush").textContent = s.rush ? `Rush order: ${s.rush.recipe} for double points, ${s.rush.left} ticks left` : "No rush order. Cook anything from the recipe book.";
   $("log").innerHTML = s.log.length ? [...s.log].reverse().map(l => `<li><span>${l.tick}</span>${l.text}</li>`).join("") : "<li>Nothing yet</li>";
 }
+// Rewrite an element only when its content changed, so clicks on the live clock are not swallowed.
+function put(id, html) { const e = $(id); if (e.dataset.was !== html) { e.innerHTML = html; e.dataset.was = html; } }
+function mate() {
+  const p = s.partner, m = s.mate, d = m.decision, now = p.goal;
+  if (document.activeElement !== $("mode")) $("mode").value = m.mode;
+  const who = m.owner === "human" ? " (you asked)" : "";
+  put("status", `${p.label ? `<b>${p.label}</b>${who}<br>` : ""}<small>${p.status}${m.thinking ? " · thinking…" : ""}</small>`);
+  const label = n => p.options.find(o => o.name === n)?.label || "Wait";
+  $("asking").hidden = !m.asking;
+  // The countdown is left out of the buttons' markup so that they stay put.
+  put("asking", m.asking ? `<b>Not sure. Which should I do?</b><small> If you don't choose I'll take the first soon.</small>${m.asking.choices.map(n => `<button data-goal="${n}">${label(n)}</button>`).join("")}` : "");
+  const jev = d?.source === "jev", top = Math.max(1, ...(d?.ranking || []).map(o => o.value));
+  put("rank", !d || m.mode === "instructions" ? "" : `<p><small>Decided because ${d.why}</small></p>` + d.ranking.slice(0, 3).map(o =>
+    `<div class="opt${o.name === now ? " on" : ""}"><div class="top"><b>${o.label}</b><span>${jev ? Math.round(o.value * 100) + "%" : ""}</span>${o.name === "wait" ? "" : `<button data-veto="${o.name}" title="Stop chef 2 choosing this for 40 ticks">Veto</button>`}</div>
+     <div class="bar"><i style="width:${Math.max(0, 100 * o.value / top)}%"></i></div><small>~${o.ticks} ticks. ${o.facts}</small></div>`).join("")
+    + (Object.keys(m.vetoes).length ? `<p><small>Vetoed for now: ${Object.keys(m.vetoes).map(label).join(", ")}. Asking for it lifts the veto.</small></p>` : ""));
+  put("meta", m.mode === "instructions" ? "Chef 2 acts only when you tell it to." : m.note || (jev ? `Confidence ${Math.round(d.confidence * 100)}%, answered in ${d.seconds.toFixed(2)} s. ${m.calls}/${m.max_calls} calls, $${m.cost.toFixed(4)}` : d ? "Chosen by rules" : ""));
+}
+// Between key presses nothing else would fetch a finished answer.
+setInterval(() => { if (s?.mate.thinking && !busy) api("/state"); }, 150);
 function panels() {
   const p = s.partner, rushed = n => s.rush?.recipe === n;
   $("book").innerHTML = Object.entries(s.recipes).map(([n, r]) => `<div class="recipe${rushed(n) ? " rush" : ""}"><span>${r.ingredients.map(k => `<i style="background:${COLOR[k]}" title="${k}"></i>`).join("")}</span><b>${n}</b><small>${r.points * (rushed(n) ? 2 : 1)} pts</small></div>`).join("")
     + `<small>Yellow is onion, red is tomato. Any order. All cook in 20 ticks.</small>`;
-  $("status").innerHTML = `${p.label ? `<b>${p.label}</b><br>` : ""}<small>${p.status}</small>`;
+  mate();
   // Update buttons in place: rebuilding them every tick would swallow clicks on the live clock.
   const all = [...p.options, { name:"", label:"Stop", ticks:null, reason:null }];
   if ([...$("goals").children].map(b => b.dataset.goal).join() !== all.map(o => o.name).join())
