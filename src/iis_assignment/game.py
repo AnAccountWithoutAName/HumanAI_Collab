@@ -1,4 +1,4 @@
-"""Game session: wraps the vendored engine with layouts, rush orders and UI-friendly state."""
+"""Game session: wraps the vendored engine with layouts, an order queue and UI-friendly state."""
 
 import random
 from collections import Counter
@@ -36,12 +36,13 @@ ACTIONS = {
     "stay": Action.STAY,
 }
 HORIZON = 300
-RUSH_TICKS = 90
+ORDER_TICKS = (60, 90)  # shortest and longest time allowed for an order
+ORDER_GAP = (30, 45)  # ticks between arrivals; with the longest order this allows at most 3 open at once
 RECIPES = {
     "onion soup": {"ingredients": ["onion", "onion", "onion"], "points": 20, "cook": 20},
     "tomato soup": {"ingredients": ["tomato", "tomato", "tomato"], "points": 20, "cook": 20},
     "mixed soup": {"ingredients": ["onion", "onion", "tomato"], "points": 30, "cook": 20},
-}  # a rush order pays double
+}  # an ordered soup pays double
 
 
 def recipe_name(ingredients):
@@ -65,20 +66,43 @@ class Game:
         self.state = self.mdp.get_standard_start_state()
         self.score, self.log = 0, []
         self.served = []  # recipe names in the order they were served
-        self.orders = []  # every rush order so far, kept apart from the event log
+        self.orders = []  # every order so far, open or closed, kept apart from the event log
         self.last = ["stay", "stay"]
-        self.rush = None  # (recipe name, deadline tick)
-        self.rush_schedule = self._make_schedule(random.Random(seed))
+        self.skipped = set()  # recipes whose order chef 2 leaves alone
+        self.order_schedule = self._make_schedule(random.Random(seed))
         self.partner = Runner(self, 1)
 
     @staticmethod
     def _make_schedule(rng):
-        """{start tick: recipe name}; the seed makes every run reproducible."""
-        schedule, t = {}, rng.randint(30, 45)
-        while t + RUSH_TICKS <= HORIZON:
-            schedule[t] = rng.choice(list(RECIPES))
-            t += RUSH_TICKS + rng.randint(5, 15)
-        return schedule
+        """{arrival tick: (recipe, ticks allowed)}. Fixed by the seed, whatever the players do.
+
+        Orders whose windows overlap never share a recipe, so a soup always fills one clear order.
+        """
+        schedule, t = {}, rng.randint(10, 25)
+        while True:
+            length = rng.randint(*ORDER_TICKS)
+            if t + length > HORIZON:
+                return schedule
+            taken = {recipe for start, (recipe, n) in schedule.items() if start + n > t}
+            schedule[t] = (rng.choice([n for n in RECIPES if n not in taken]), length)
+            t += rng.randint(*ORDER_GAP)
+
+    @property
+    def active(self):
+        """Open orders, most urgent first."""
+        return sorted((o for o in self.orders if o["status"] == "active"), key=lambda o: o["deadline"])
+
+    def due(self, recipe):
+        """Ticks left on the open order for this recipe, or None."""
+        return next((o["deadline"] - self.state.timestep for o in self.active if o["recipe"] == recipe), None)
+
+    def open_order(self, recipe, ticks):
+        now = self.state.timestep
+        self.orders.append({"id": len(self.orders) + 1, "recipe": recipe, "start": now, "deadline": now + ticks, "status": "active"})
+
+    def _close_order(self, order, status, chef=None):
+        order.update(status=status, chef=chef, closed=self.state.timestep)
+        self.skipped.discard(order["recipe"])
 
     @property
     def done(self):
@@ -97,15 +121,16 @@ class Game:
         finished = self.partner.after_step(before)
         if finished:
             self._say(f"Chef 2 finished: {finished}")
-        self._update_rush()
+        self._update_orders()
 
     def _served(self, chef, soup):
         name = recipe_name(soup.ingredients)
         self.served.append(name)
         reward = RECIPES[name]["points"] if name else 0
-        if self.rush and name == self.rush[0]:
+        order = next((o for o in self.active if o["recipe"] == name), None)
+        if order:
             reward *= 2
-            self._close_order("completed", chef)
+            self._close_order(order, "completed", chef)
         self.score += reward
         self._say(f"Chef {chef + 1} served {name or 'a soup nobody ordered'} (+{reward})")
 
@@ -114,17 +139,13 @@ class Game:
         wanted = Counter(list(in_pot) + [ingredient])
         return any(wanted <= Counter(r["ingredients"]) for r in RECIPES.values())
 
-    def _update_rush(self):
+    def _update_orders(self):
         now = self.state.timestep
-        if self.rush and now >= self.rush[1]:
-            self._close_order("expired")
-        if now in self.rush_schedule:
-            self.rush = (self.rush_schedule[now], now + RUSH_TICKS)
-            self.orders.append({"recipe": self.rush[0], "start": now, "deadline": self.rush[1], "status": "active"})
-
-    def _close_order(self, status, chef=None):
-        self.orders[-1].update(status=status, chef=chef, closed=self.state.timestep)
-        self.rush = None
+        for order in self.active:
+            if now >= order["deadline"]:
+                self._close_order(order, "expired")
+        if now in self.order_schedule:
+            self.open_order(*self.order_schedule[now])
 
     def _say(self, text):
         self.log.append({"tick": self.state.timestep, "text": text})
@@ -177,8 +198,7 @@ class Game:
             "horizon": HORIZON,
             "score": self.score,
             "done": self.done,
-            "rush": self.rush
-            and {"recipe": self.rush[0], "left": self.rush[1] - self.state.timestep},
+            "due": {o["recipe"]: o["deadline"] - self.state.timestep for o in self.active},
             "chefs": [
                 {"pos": p.position, "facing": p.orientation, "held": self._object(p.held_object), "hint": self.hint(i)}
                 for i, p in enumerate(self.state.players)

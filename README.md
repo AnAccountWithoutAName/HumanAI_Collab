@@ -1,7 +1,7 @@
 # Kitchen Teammate
 
 A small two-player cooperative kitchen for exploring how an AI teammate plans and reprioritises
-subgoals alongside a human. Rush orders change what matters mid-game.
+subgoals alongside a human. A queue of orders with deadlines changes what matters mid-game.
 
 ## Run
 
@@ -26,7 +26,8 @@ The AI teammate needs an [OpenRouter](https://openrouter.ai) key with credit, in
 ## Rules
 
 Fill a pot with three ingredients, wait 20 ticks, collect the soup with a dish and serve it. A game
-lasts 300 ticks. A rush order doubles one recipe for 90 ticks, and the seed fixes which and when. The
+lasts 300 ticks. Up to three orders are open at once, each for a different soup with its own deadline (60 to 90
+ticks). An ordered soup pays double; a missed order only loses the bonus. The seed fixes every order. The
 *Split* kitchen forces chefs to pass items over a counter.
 
 | Recipe | Ingredients (any order) | Points |
@@ -49,7 +50,7 @@ other chef and carries the goal out.
 | Rules | Hand-written scores over the same goals; also the fallback if Jev fails |
 | Only what you ask | Follows direct instructions and nothing else |
 
-It decides again only when something happens: it is free, stuck or blocked, a rush starts or ends, a soup is
+It decides again only when something happens: it is free, stuck or blocked, an order arrives or closes, a soup is
 ready, you change a pot, or you veto a goal or change a rule. Every decision and message is written to `logs/`.
 
 ## Talking with chef 2
@@ -67,11 +68,11 @@ Press `C` to type, or use the buttons. Who does what:
 |---|---|
 | Impossible | Refuses, says why and what would help |
 | Harmful (spoils a pot, cannot finish in time) | Warns, and needs a button press to go ahead |
-| A veto, or a soup, with a clear cost (such as the rush order) | Objects; you choose |
+| A veto, or a soup, with a clear cost (such as another order) | Objects; you choose |
 | Much worse than another option, with a cost the code can name | Objects and suggests; you choose |
 | Anything else | Does it |
 
-A lasting rule ("leave the tomatoes to me") is enforced by code until undone. If it costs a rush order or a finished
+A lasting rule ("leave the tomatoes to me") is enforced by code until undone. If it costs an order or a finished
 soup, chef 2 keeps to it and asks about an exception. Chef 2 can also ask you to pass something, and respects "can't".
 
 Jev gives no reasons, so explanations list the recorded facts and scores rather than a cause. Haiku sees only a
@@ -82,7 +83,7 @@ template. This check is simple and cannot catch every bad wording. Without a key
 
 | Part | State |
 |---|---|
-| Game, recipe book, rush orders, human control of both chefs | Implemented |
+| Game, recipe book, order queue, human control of both chefs | Implemented |
 | Goals, pathfinding, yielding to the other chef, manual goal panel | Implemented |
 | Rule and Jev planners, ranked goals with probabilities, veto, asking when unsure, decision log | Implemented |
 | Typed messages, refusals and objections, lasting rules, help requests, explanations | Implemented |
@@ -90,7 +91,7 @@ template. This check is simple and cannot catch every bad wording. Without a key
 
 ## Code
 
-- `src/iis_assignment/game.py`: layouts, rush orders, scoring, state view
+- `src/iis_assignment/game.py`: layouts, order queue, scoring, state view
 - `src/iis_assignment/skills.py`: goals, pathfinding and the runner that carries out a goal
 - `src/iis_assignment/planner.py`: state given to planners, rules, Jev, triggers and checks on every answer
 - `src/iis_assignment/talk.py`: messages, verdict wording, explanations and help requests
@@ -132,6 +133,13 @@ template. This check is simple and cannot catch every bad wording. Without a key
 - **2026-11-25, telling instead of vetoing.** Veto buttons were removed from the interface and the panel for telling
   chef 2 what to do moved beside the game: a veto takes control, while a request chef 2 can answer is coordination. The
   veto logic stays in `planner.py` but nothing on the page uses it. Lasting rules cover "leave that to me".
+- **2026-11-25, order queue.** One order at a time meant that reprioritising was only "switch to the rush". Up to three
+  orders now overlap, and the facts say which orders each job helps and whether one can still be met. Chef 2 compares
+  orders when it objects, asks which one "the order" means, and can be told to leave one to the player. Orders are
+  fixed by the seed whatever the players do, so planners can be compared on the same orders. First trial (5 seeds per
+  kitchen, scripted rule-based chef 1, mean score and orders met of 30): open, rules 260 (21), Jev 272 (21); split, rules
+  216 (17), Jev 234 (20). The gap is smaller than before the queue, and Jev is not repeatable: one seed gave 200 and then
+  300 with the same settings. Scores from before the queue are not comparable.
 
 ## Reused material
 

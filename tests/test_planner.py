@@ -12,7 +12,7 @@ from iis_assignment.skills import Runner
 
 def quiet(layout="open"):
     game = Game(layout)
-    game.rush_schedule = {}
+    game.order_schedule = {}
     return game
 
 
@@ -65,11 +65,63 @@ class ContextTest(unittest.TestCase):
             mate.instruct(name)
             while game.partner.goal:
                 play(mate, 1)
-        game.rush = ("tomato soup", 99)
+        game.open_order("tomato soup", 99)
         facts = {n: c["facts"] for n, c in menu(game, 1).items()}
         self.assertIn("completes mixed soup, worth 30", facts["add_tomato_pot1"])
-        self.assertIn("rules out the rush order", facts["add_tomato_pot1"])
-        self.assertIn("tomato soup (the rush order, 40 points) would need 2 more tomatoes", facts["add_tomato_pot2"])
+        self.assertIn("tomato soup (40 points, an order with 99 ticks left, in time alone as serving takes about", facts["add_tomato_pot2"])
+        self.assertIn("would need 2 more tomatoes", facts["add_tomato_pot2"])
+        self.assertIn("rules out the tomato soup order in this pot", facts["add_onion_pot2"])
+
+
+class QueueTest(unittest.TestCase):
+    def test_serving_estimate_matches_play(self):
+        for recipe in ("onion soup", "tomato soup", "mixed soup"):
+            game = quiet()
+            game.step(["down", "stay"])
+            mate = Teammate(game, "instructions")
+            estimate = planner.time_to_serve(game, 1, recipe)
+            plans = []
+            for pot in (1, 2):  # the estimate takes the better pot
+                game = quiet()
+                game.step(["down", "stay"])
+                mate = Teammate(game, "instructions")
+                start = game.state.timestep
+                for name in [f"add_{i}_pot{pot}" for i in game.recipes[recipe]["ingredients"]] + [f"collect_pot{pot}", "serve"]:
+                    mate.instruct(name)
+                    while game.partner.goal:
+                        play(mate, 1)
+                plans.append(game.state.timestep - start)
+            self.assertLessEqual(abs(estimate - min(plans)), 12, (recipe, estimate, plans))
+
+    def test_late_orders_are_marked_and_not_valued(self):
+        game = quiet()
+        game.open_order("tomato soup", 20)
+        facts = menu(game, 1)["add_tomato_pot2"]["facts"]
+        self.assertIn("too late alone", facts)
+        self.assertEqual(planner.toward(game, planner.goals(game)["add_tomato_pot2"]), "mixed soup")
+
+    def test_context_lists_every_order_by_urgency(self):
+        game = quiet()
+        game.open_order("mixed soup", 90)
+        game.open_order("tomato soup", 60)
+        orders = context(game, 1, "x", [])["orders"]
+        self.assertEqual([(o["recipe"], o["pays"], o["ticks_left"]) for o in orders], [("tomato soup", 40, 60), ("mixed soup", 60, 90)])
+        self.assertGreater(orders[0]["chef_alone_needs_about"], 20)
+
+    def test_costs_compare_orders(self):
+        game = quiet()
+        game.open_order("tomato soup", 80)
+        self.assertTrue(any("tomato soup order pays 40 and has 80" in c for c in planner.costs_of(game, "add_onion_pot1", "add_tomato_pot1")))
+        game.open_order("onion soup", 90)  # the request now serves an order too, but a later one
+        costs = planner.costs_of(game, "add_onion_pot1", "add_tomato_pot1")
+        self.assertTrue(any("while the onion soup order pays 40 and has 90" in c for c in costs), costs)
+        self.assertFalse(any("while" in c for c in planner.costs_of(game, "add_tomato_pot1", "add_onion_pot1")))
+
+    def test_rules_prefer_an_order_that_can_be_met(self):
+        game = quiet()
+        game.open_order("onion soup", 15)
+        game.open_order("tomato soup", 80)
+        self.assertIn("tomato", rules(game, 1, menu(game, 1))[0][0])
 
 
 class TeammateTest(unittest.TestCase):
@@ -114,17 +166,17 @@ class TeammateTest(unittest.TestCase):
 
     def test_rush_triggers_replanning_mid_goal(self):
         game, jev = Game(), FakeJev("add_onion_pot1")
-        game.rush_schedule = {2: "tomato soup"}
+        game.order_schedule = {2: ("tomato soup", 90)}
         mate = Teammate(game, "jev", ask=jev)
         mate.tick()
         jev.prefer = ("add_tomato_pot2",)
         play(mate, 2)
-        self.assertEqual(jev.seen[-1][0]["why_deciding_now"], "a rush order started")
+        self.assertEqual(jev.seen[-1][0]["why_deciding_now"], "a new order arrived")
         self.assertEqual(game.partner.name, "add_tomato_pot2")
 
     def test_instruction_is_not_overridden(self):
         game = Game()
-        game.rush_schedule = {3: "tomato soup"}
+        game.order_schedule = {3: ("tomato soup", 90)}
         mate = Teammate(game, "jev", ask=FakeJev("add_tomato_pot2"))
         mate.instruct("add_onion_pot1")
         play(mate, 6)

@@ -21,7 +21,7 @@ REQUEST_TICKS = 40  # an unanswered request is withdrawn
 REQUEST_GAP = 20  # quiet time between requests
 DECLINED_TICKS = 60  # do not ask again for something the player said they cannot do
 TOPICS = ["onion", "tomato", "pot1", "pot2", "collect", "serve"]
-ACTS = ["goal", "make", "free", "question", "order", "cancel_orders", "why", "stop", "go_ahead", "take_suggestion", "withdraw", "help_ok", "help_cant", "chat", "unclear"]
+ACTS = ["goal", "make", "skip", "free", "question", "order", "cancel_orders", "why", "stop", "go_ahead", "take_suggestion", "withdraw", "help_ok", "help_cant", "chat", "unclear"]
 
 
 def ask_haiku(system, user, schema):
@@ -48,12 +48,13 @@ UNDERSTAND = """You translate a player's chat message to chef 2, their AI teamma
 Do not answer the message. Act types:
 - goal: do one job now. Set goal.
 - make: wants a particular soup, or says which soup is needed ("but we need tomato soup", "do the order"). Set recipe;
-  rush_order if they mean the current order. Use make, not unclear, whenever a soup is named without a single job.
+  an_order if they say order without naming a soup. Use make, not unclear, whenever a soup is named without a single job.
+- skip: wants chef 2 to leave one order alone or to the player ("skip the mixed order", "I'll do the tomato order"). Set recipe.
 - free: leaves the choice to chef 2 ("do something", "up to you", "get going").
 - question: asks about the game, orders, pots or chef 2 (not a reason for a choice), or says something chef 2 could comment on.
 - order: a lasting rule about what chef 2 should leave alone (rule=avoid) or limit itself to (rule=only). Set rule, topics, until.
   "leave the tomatoes to me" is avoid tomato. "you just plate and serve" is only collect and serve.
-  until is "cancelled" unless the player's own words mention the rush ending.
+  until is "cancelled" unless the player's own words mention the orders or the rush ending.
 - cancel_orders: drop lasting rules. - stop: stop what you are doing.
 - why: asks for a reason for anything chef 2 does, did or keeps doing (always why, never question). Set goal if they ask about one particular job, including why it was not done.
 - go_ahead, take_suggestion, withdraw: answers to the open question; what each means is given with it. Use them only if one is open.
@@ -70,10 +71,10 @@ def understand_schema(game):
     fields = {
         "type": {"type": "string", "enum": ACTS},
         "goal": {"type": "string", "enum": names + ["none"]},
-        "recipe": {"type": "string", "enum": list(game.recipes) + ["rush_order", "none"]},
+        "recipe": {"type": "string", "enum": list(game.recipes) + ["an_order", "none"]},
         "rule": {"type": "string", "enum": ["avoid", "only", "none"]},
         "topics": {"type": "array", "items": {"type": "string", "enum": TOPICS}},
-        "until": {"type": "string", "enum": ["cancelled", "rush_end"]},
+        "until": {"type": "string", "enum": ["cancelled", "orders_end"]},
         "candidates": {"type": "array", "items": {"type": "string", "enum": names}},
     }
     return {"type": "object", "additionalProperties": False, "required": list(fields), "properties": fields}
@@ -95,7 +96,7 @@ def grounded(text, brief):
     said = text.lower()
     allowed = {int(n) for n in re.findall(r"\d+", source)} | {n for w, n in NUMBER_WORDS.items() if re.search(rf"\b{w}\b", source)}
     used = {int(n) for n in re.findall(r"\d+", said)} | {n for w, n in NUMBER_WORDS.items() if re.search(rf"\b{w}\b", said)}
-    things = [w for w in ("onion", "tomato", "mixed", "dish", "rush", "counter", "serve", "collect") if w in said]
+    things = [w for w in ("onion", "tomato", "mixed", "dish", "counter", "serve", "collect") if w in said]
     verdict = brief.get("verdict", "")
     if verdict == "answer" and re.search(r"\b(i will|i'll|earlier|i was|i chose|i wanted|promise)\b", said):
         return False  # an answer may not promise anything or recall a past it was not given
@@ -195,9 +196,10 @@ class Talk:
         c = context(game, 1, "", [])
         label = {n: g.label for n, g in goals(game).items()}
         return {
-            **{k: c[k] for k in ("rush_order", "recipes", "pots", "ticks_left", "score", "human", "items_on_counters")},
+            **{k: c[k] for k in ("orders", "recipes", "pots", "ticks_left", "score", "human", "items_on_counters")},
             "chef2": {"holding": c["you"]["holding"], "job": label.get(mate.runner.name), "towards": mate.view_toward(),
                       "status": mate.runner.status, "job_set_by": mate.owner},
+            "orders_left_to_player": sorted(game.skipped),
             "player_rules": [o["text"] for o in mate.orders],
             "player_vetoes": [label[n] for n in mate.vetoes],
             "possible_jobs": {o["label"]: o["ticks"] for o in options(game, 1) if not o["reason"]},
@@ -205,19 +207,18 @@ class Talk:
 
     def _answer_question(self):
         s = self.situation()
-        rush = s["rush_order"]
         pots = join(f"pot {n[3:]} is {p['status']}" + (f" with {', '.join(p['has'])}" if p["has"] else "") for n, p in s["pots"].items())
         job = s["chef2"]["job"]
-        draft = (f"The order is {rush['recipe']}, {rush['ticks_left']} ticks left. " if rush else "There is no rush order. ") + f"{pots[0].upper()}{pots[1:]}. " + (f"I'm on this: {low(job)}." if job else "I have no job right now.")
+        draft = ("Open orders: " + join(f"{o['recipe']}, {o['ticks_left']} ticks left" for o in s["orders"]) + ". " if s["orders"] else "There are no open orders. ") + f"{pots[0].upper()}{pots[1:]}. " + (f"I'm on this: {low(job)}." if job else "I have no job right now.")
         self.explain({"verdict": "answer", "message": self._last, "situation": s}, draft, ANSWER)
 
     def _question(self):
         """The open card, with what each answer would mean."""
-        if not self.card or self.card["kind"] == "clarify":
+        if not self.card or self.card["kind"] in ("clarify", "which_order"):
             return None
         labels = {n: g.label for n, g in goals(self.game).items()}
         if self.card["kind"] == "make":
-            return {"go_ahead": f"make {self.card['recipe']} anyway", "take_suggestion": f"make the rush {self.card['prefer']}", "withdraw": "drop it"}
+            return {"go_ahead": f"make {self.card['recipe']} anyway", "take_suggestion": f"make the {self.card['prefer']} order", "withdraw": "drop it"}
         asked = labels[self.card["goal"]]
         if self.card["kind"] == "veto":
             return {"go_ahead": f"keep the veto: do not {asked}", "withdraw": f"let chef 2 carry on: {asked}"}
@@ -240,6 +241,8 @@ class Talk:
             self.mate.add_order(act["rule"], [t for t in act["topics"] if t in TOPICS], act.get("until", "cancelled"))
         elif kind == "make":
             self.mate.make(act.get("recipe"))
+        elif kind == "skip":
+            self.mate.skip(act.get("recipe"))
         elif kind == "free":
             self.mate.free()
         elif kind == "cancel_orders":
@@ -303,10 +306,14 @@ class Talk:
         draft = f"Before you veto this ({low(label)}): {join(costs)}. Veto it anyway?"
         self.explain({"verdict": "objects to a veto and keeps going until the player decides", "vetoed_job": label, "costs_of_the_veto": costs}, draft)
 
-    def object_make(self, recipe, rush, costs):
-        self.card = {"kind": "make", "goal": None, "recipe": recipe, "prefer": rush, "costs": costs}
-        draft = f"I'd rather not make {recipe} now: {join(costs)}. I suggest the {rush} first, but it's your call."
-        self.explain({"verdict": "object, but the player decides", "asked": f"make {recipe}", "costs": costs, "suggest": f"make {rush} first"}, draft)
+    def which_order(self, names):
+        self.card = {"kind": "which_order", "goal": None, "recipes": names}
+        self.say("There is more than one order. Which should I work on?")
+
+    def object_make(self, recipe, better, costs):
+        self.card = {"kind": "make", "goal": None, "recipe": recipe, "prefer": better, "costs": costs}
+        draft = f"I'd rather not make {recipe} now: {join(costs)}. I suggest the {better} order first, but it's your call."
+        self.explain({"verdict": "object, but the player decides", "asked": f"make {recipe}", "costs": costs, "suggest": f"the {better} order first"}, draft)
 
     def conflict(self, name, instead, order, costs):
         """A standing order is now costing something."""
@@ -403,7 +410,8 @@ class Talk:
         if name not in self.help_menu():
             return
         item, now = name.removeprefix("pass_"), self.game.state.timestep
-        why = f" for the rush {self.game.rush[0]}" if self.game.rush and item in self.game.recipes[self.game.rush[0]]["ingredients"] else ""
+        wanted = [o["recipe"] for o in self.game.active if o["recipe"] not in self.game.skipped and item in self.game.recipes[o["recipe"]]["ingredients"]]
+        why = f" for the {wanted[0]} order" if wanted else ""
         text = f"Could you pass me {'an' if item[0] in 'aeiou' else 'a'} {item}{why}? Put it on the middle counter."
         self.request = {"name": name, "item": item, "text": text, "until": now + REQUEST_TICKS, "accepted": False,
                         "tiles": self.game.mdp.terrain_pos_dict[DISPENSERS[item]]}
@@ -435,7 +443,7 @@ class Talk:
                 self.say(f"Got it, thanks for the {item}.")
             elif now >= self.request["until"]:
                 self._close_request()
-        if self.card and self.card["kind"] == "make" and (not game.rush or game.rush[0] != self.card["prefer"]):
+        if self.card and self.card["kind"] == "make" and game.due(self.card["prefer"]) is None:
             self.card = None
         if self.card and self.card["goal"]:
             reason = plan(game, 1, goals(game)[self.card["goal"]], force=self.card["kind"] == "warn")[0]

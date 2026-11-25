@@ -64,6 +64,8 @@ class Handler(BaseHTTPRequestHandler):
                     mate.talk.hear(body["text"])
                 elif self.path == "/why":
                     mate.talk.why()
+                elif self.path == "/make":  # picks one of several open orders
+                    mate.make(body["recipe"])
                 elif self.path == "/answer":  # an objection, warning or conflict
                     mate.answer(body["reply"])
                 elif self.path == "/help":  # chef 2's request

@@ -20,7 +20,7 @@ def run(game, name, limit=80):
 
 def quiet(layout):
     game = Game(layout)
-    game.rush_schedule = {}
+    game.order_schedule = {}
     return game
 
 

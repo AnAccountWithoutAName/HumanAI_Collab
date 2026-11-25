@@ -15,7 +15,7 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px }
   h2 { font-size:14px; margin:0 0 6px }
   #error { margin:0 0 12px; padding:11px 14px; border-radius:8px; background:var(--rush); color:#fff }
-  #orders { margin-bottom:12px; min-height:92px } #orders h2 { margin:0 0 6px }
+  #orders { margin-bottom:12px; min-height:176px } .order.soon .left { color:var(--rush) } #orders h2 { margin:0 0 6px }
   .order { display:flex; align-items:center; gap:10px; padding:3px 0 } .order i { display:inline-block; width:15px; height:15px; border-radius:50% }
   .order small { margin-left:auto } .order.active { font-size:16px } .order.active b { color:var(--rush) } .order.past { font-size:13px; color:var(--muted) }
   .order .left { margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums }
@@ -151,7 +151,7 @@ $("asking").onclick = e => { const b = e.target.closest("button"); if (b) api("/
 $("say").onsubmit = e => { e.preventDefault(); const t = $("text").value.trim(); if (!t) return; $("text").value = ""; $("text").blur(); api("/chat", { text:t }); };
 $("why").onclick = e => { e.target.blur(); api("/why", {}); };
 $("text").onkeydown = e => { if (e.key === "Escape") e.target.blur(); };
-$("card").onclick = e => { const b = e.target.closest("button"); if (b) b.dataset.goal ? api("/goal", { goal:b.dataset.goal }) : api("/answer", { reply:b.dataset.reply }); };
+$("card").onclick = e => { const b = e.target.closest("button"); if (b) b.dataset.recipe ? api("/make", { recipe:b.dataset.recipe }) : b.dataset.goal ? api("/goal", { goal:b.dataset.goal }) : api("/answer", { reply:b.dataset.reply }); };
 $("request").onclick = e => { const b = e.target.closest("button"); if (b) api("/help", { ok:b.dataset.ok === "1" }); };
 $("rules").onclick = e => { const b = e.target.closest("button"); if (b) api("/order/cancel", { id:Number(b.dataset.id) }); };
 $("mode").onchange = e => { e.target.blur(); api("/mode", { mode:e.target.value }); };
@@ -208,10 +208,10 @@ function render() {
 function put(id, html) { const e = $(id); if (e.dataset.was !== html) { e.innerHTML = html; e.dataset.was = html; } }
 function orders() {
   const dots = n => s.recipes[n].ingredients.map(k => `<i style="background:${COLOR[k]}" title="${k}"></i>`).join(" ");
-  const open = s.orders.filter(o => o.status === "active"), past = s.orders.filter(o => o.status !== "active").reverse().slice(0, 3);
-  $("orderlist").innerHTML = (open.map(o => { const left = o.deadline - s.tick, pts = s.recipes[o.recipe].points * 2; return `<div class="order active"><span>${dots(o.recipe)}</span><b>${o.recipe}</b> ${pts} pts (double)<span class="left">${left} ticks left</span></div><div class="clock"><i style="width:${100 * left / (o.deadline - o.start)}%"></i></div>`; }).join("")
-    || `<div class="order">No rush order now. Anything in the recipe book still sells.</div>`)
-    + past.map(o => `<div class="order past"><span>${dots(o.recipe)}</span>${o.recipe}<small>${o.status === "completed" ? `✓ completed by chef ${o.chef + 1}` : "✗ expired"}, tick ${o.closed}</small></div>`).join("");
+  const open = s.orders.filter(o => o.status === "active").sort((a, b) => a.deadline - b.deadline), past = s.orders.filter(o => o.status !== "active").sort((a, b) => b.closed - a.closed).slice(0, 2);
+  $("orderlist").innerHTML = (open.map(o => { const left = o.deadline - s.tick, pts = s.recipes[o.recipe].points * 2; return `<div class="order active${left <= 25 ? " soon" : ""}"><span>${dots(o.recipe)}</span><b>${o.recipe}</b> ${pts} pts${s.mate.skipped.includes(o.recipe) ? " <small style='margin:0'>left to you</small>" : ""}<span class="left">${left} ticks left</span></div><div class="clock"><i style="width:${100 * left / (o.deadline - o.start)}%"></i></div>`; }).join("")
+    || `<div class="order">No orders now. Anything in the recipe book still sells.</div>`)
+    + past.map(o => `<div class="order past"><span>${dots(o.recipe)}</span>${o.recipe}<small>${o.status === "completed" ? `✓ completed by chef ${o.chef + 1}` : "✗ missed"}, tick ${o.closed}</small></div>`).join("");
 }
 const esc = t => t.replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" })[c]);
 function talk() {
@@ -222,20 +222,20 @@ function talk() {
   $("request").hidden = !r;
   put("request", r ? `<b>${esc(r.text)}</b>${r.accepted ? "<br><small>Waiting for it.</small>" : `<div class="acts"><button data-ok="1">OK</button><button data-ok="0">Can't</button></div>`}` : "");
   $("card").hidden = !c;
-  const title = { object:"Chef 2 disagrees", warn:"This would do harm", conflict:"Your rule has a cost", clarify:"Which one?", veto:"Chef 2 objects to the veto", make:"Chef 2 disagrees" }, costs = c?.costs?.map(x => `<li>${esc(x)}</li>`).join("");
+  const title = { object:"Chef 2 disagrees", warn:"This would do harm", conflict:"Your rule has a cost", clarify:"Which one?", which_order:"Which order?", veto:"Chef 2 objects to the veto", make:"Chef 2 disagrees" }, costs = c?.costs?.map(x => `<li>${esc(x)}</li>`).join("");
   const acts = !c ? [] : c.kind === "object" ? [["insist", `Do it anyway: ${c.label}`], ["idea", `Use chef 2's idea: ${c.prefer_label}`], ["withdraw", "Drop it"]]
-    : c.kind === "make" ? [["insist", `Make ${c.recipe} anyway`], ["idea", `Make the rush ${c.prefer}`], ["withdraw", "Drop it"]]
+    : c.kind === "make" ? [["insist", `Make ${c.recipe} anyway`], ["idea", `Do the ${c.prefer} order`], ["withdraw", "Drop it"]]
     : c.kind === "veto" ? [["withdraw", `Let it carry on: ${c.label}`], ["insist", "Veto anyway"]]
     : c.kind === "warn" ? [["withdraw", "Drop it"], ["insist", `Do it anyway: ${c.label}`]]
     : c.kind === "conflict" ? [["withdraw", "Keep my rule"], ["insist", `Just this once: ${c.label}`], ["cancel", "Remove the rule"]] : [["withdraw", "Never mind"]];
-  put("card", !c ? "" : `<b>${title[c.kind]}</b>${c.costs ? `<ul>${costs}</ul>` : ""}<div class="acts">${acts.map(([k, l]) => `<button data-reply="${k}">${l}</button>`).join("")}${c.choices.map(o => `<button data-goal="${o.name}">${o.label}</button>`).join("")}</div>`);
+  put("card", !c ? "" : `<b>${title[c.kind]}</b>${c.costs ? `<ul>${costs}</ul>` : ""}<div class="acts">${acts.map(([k, l]) => `<button data-reply="${k}">${l}</button>`).join("")}${(c.recipes || []).map(n => `<button data-recipe="${n}">${n}</button>`).join("")}${c.choices.map(o => `<button data-goal="${o.name}">${o.label}</button>`).join("")}</div>`);
   put("rules", s.mate.orders.map(o => `<span class="rule">Rule: ${o.text} <button data-id="${o.id}" aria-label="Undo rule: ${o.text}">Undo</button></span>`).join(""));
 }
 function mate() {
   const p = s.partner, m = s.mate, d = m.decision, now = p.goal;
   if (document.activeElement !== $("mode")) $("mode").value = m.mode;
   const who = m.owner === "human" ? " (you asked)" : "";
-  put("status", `${p.label ? `<b>${p.label}</b>${who}${m.toward ? `<br>Towards: ${m.toward}${s.rush?.recipe === m.toward ? " (the order)" : ""}` : ""}<br>` : ""}<small>${p.status}${m.thinking ? " · thinking…" : ""}</small>`);
+  put("status", `${p.label ? `<b>${p.label}</b>${who}${m.toward ? `<br>Towards: ${m.toward}${m.toward in s.due ? " (an order)" : ""}` : ""}<br>` : ""}<small>${p.status}${m.thinking ? " · thinking…" : ""}</small>`);
   const label = n => p.options.find(o => o.name === n)?.label || "Wait";
   $("asking").hidden = !m.asking;
   // The countdown is left out of the buttons' markup so that they stay put.
@@ -249,7 +249,7 @@ function mate() {
 // Between key presses nothing else would fetch a finished answer.
 setInterval(() => { if ((s?.mate.thinking || s?.mate.talk.busy) && !busy) api("/state"); }, 150);
 function panels() {
-  const p = s.partner, rushed = n => s.rush?.recipe === n;
+  const p = s.partner, rushed = n => n in s.due;
   $("book").innerHTML = Object.entries(s.recipes).map(([n, r]) => `<div class="recipe${rushed(n) ? " rush" : ""}"><span>${r.ingredients.map(k => `<i style="background:${COLOR[k]}" title="${k}"></i>`).join("")}</span><b>${n}</b><small>${r.points * (rushed(n) ? 2 : 1)} pts</small></div>`).join("")
     + `<small>Yellow is onion, red is tomato. Any order. All cook in 20 ticks.</small>`;
   orders();

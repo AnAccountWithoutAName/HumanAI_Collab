@@ -41,9 +41,14 @@ def possible(game, inside):
     return sorted(names, key=lambda n: -worth(game, n))
 
 
+def due(game, recipe):
+    """Ticks left on an order chef 2 may work towards, or None."""
+    return None if recipe in game.skipped else game.due(recipe)
+
+
 def worth(game, recipe):
     points = game.recipes[recipe]["points"] if recipe else 0
-    return points * 2 if game.rush and game.rush[0] == recipe else points
+    return points * 2 if due(game, recipe) is not None else points
 
 
 def advances(game, goal, recipe):
@@ -54,34 +59,131 @@ def advances(game, goal, recipe):
     return all(inside.count(i) <= need.count(i) for i in inside)
 
 
+def value(game, chef, goal, recipe):
+    """What this recipe would bring if the goal leads to it, not counting an order that would be missed."""
+    left, needed = due(game, recipe), finish_ticks(game, chef, goal, recipe)
+    late = left is not None and needed is not None and needed > left
+    return game.recipes[recipe]["points"] if late else worth(game, recipe)
+
+
 def toward(game, goal):
-    """The recipe an add goal is working towards: the best paid one the pot could still become."""
+    """The recipe an add goal is working towards: the most valuable one the pot could still become."""
     if not goal or goal.kind != "add":
         return None
     soup = game.state.objects.get(goal.pot)
     recipes = possible(game, (list(soup.ingredients) if soup else []) + [goal.item])
-    return recipes[0] if recipes else None
+    return max(recipes, key=lambda n: value(game, 1, goal, n)) if recipes else None
 
 
-def rest_ticks(game, chef, goal, recipe):
-    """Ticks for this chef to fetch what the pot still lacks after `goal`, or None if out of reach."""
-    soup = game.state.objects.get(goal.pot)
-    need, total = list(game.recipes[recipe]["ingredients"]), 0
-    for i in (list(soup.ingredients) if soup else []) + [goal.item]:
+def brew(game, pos, facing, pot, inside, recipe, cook=None):
+    """(ticks to fill the pot, ticks until served) for a chef working alone; None where something is out of reach."""
+    need, fill, here = list(game.recipes[recipe]["ingredients"]), 0, (pos, facing)
+    for i in inside:
         need.remove(i)
-    start = route(game, game.state.players[chef].position, (0, -1), {goal.pot})
+    tiles = game.mdp.terrain_pos_dict
+
+    def trip(start, *stops):
+        ticks = 0
+        for stop in stops:
+            leg = route(game, *start, stop)
+            if leg is None:
+                return None, None
+            ticks, start = ticks + len(leg.actions) + 1, (leg.pos, leg.facing)
+        return ticks, start
+
     for item in need:
-        out = start and route(game, start.pos, start.facing, set(game.mdp.terrain_pos_dict[DISPENSERS[item]]))
-        start = out and route(game, out.pos, out.facing, {goal.pot})
-        if not start:
-            return None
-        total += len(out.actions) + len(start.actions) + 2
-    return total
+        ticks, here = trip(here, set(tiles[DISPENSERS[item]]), {pot})
+        if ticks is None:
+            return None, None
+        fill += ticks
+    plate, at_pot = trip(here, set(tiles["D"]), {pot})
+    out, _ = trip(at_pot, set(tiles["S"])) if plate is not None else (None, None)
+    if out is None:
+        return fill, None
+    return fill, fill + max(game.recipes[recipe]["cook"] if cook is None else cook, plate) + out
+
+
+def after_add(game, chef, goal, recipe):
+    """brew() from the moment this add goal is done."""
+    soup = game.state.objects.get(goal.pot)
+    inside = (list(soup.ingredients) if soup else []) + [goal.item]
+    stand = route(game, game.state.players[chef].position, (0, -1), {goal.pot})
+    return brew(game, stand.pos, stand.facing, goal.pot, inside, recipe) if stand else (None, None)
+
+
+def finish_ticks(game, chef, goal, recipe):
+    """Estimated ticks until this soup is served if the chef starts with this goal and works alone, or None."""
+    reason, ticks = plan(game, chef, goal, force=True)
+    if reason:
+        return None
+    if goal.kind == "add":
+        rest = after_add(game, chef, goal, recipe)[1]
+        return None if rest is None else ticks + rest
+    if goal.kind == "collect":
+        stand = route(game, game.state.players[chef].position, (0, -1), {goal.pot})
+        out = stand and route(game, stand.pos, stand.facing, set(game.mdp.terrain_pos_dict["S"]))
+        return ticks + len(out.actions) + 1 if out else None
+    return ticks if goal.kind == "serve" else None
+
+
+def time_to_serve(game, chef, recipe):
+    """Quickest estimate for this chef alone to serve this recipe from now, using any pot, or None."""
+    best, every = None, goals(game)
+    for goal in every.values():
+        if recipe in made_by(game, chef, goal):
+            ticks = finish_ticks(game, chef, goal, recipe)
+            best = ticks if best is None or ticks is not None and ticks < best else best
+    return best
+
+
+def advances_open(game, goal, recipe):
+    soup = game.state.objects.get(goal.pot)
+    return not (soup and soup.is_full) and advances(game, goal, recipe)
+
+
+def made_by(game, chef, goal):
+    """Recipes this goal brings closer."""
+    if goal.kind == "add":
+        return [n for n in game.recipes if advances_open(game, goal, n)]
+    if goal.kind == "collect":
+        soup = game.state.objects.get(goal.pot)
+    elif goal.kind == "serve":
+        held = game.state.players[chef].held_object
+        soup = held if held and held.name == "soup" else next((o for p, o in game.state.objects.items() if o.name == "soup" and p not in game.pots), None)
+    else:
+        return []
+    return [n for n, r in game.recipes.items() if soup and sorted(r["ingredients"]) == sorted(soup.ingredients)]
+
+
+def open_orders(game):
+    """Orders chef 2 may work towards, most urgent first."""
+    return [o for o in game.active if o["recipe"] not in game.skipped]
+
+
+def order_text(game, recipe):
+    return f"the {recipe} order pays {worth(game, recipe)} and has {due(game, recipe)} ticks left"
+
+
+def orders_helped(game, chef, goal):
+    """Open orders this goal brings closer."""
+    made = made_by(game, chef, goal)
+    return [o["recipe"] for o in open_orders(game) if o["recipe"] in made]
 
 
 def can_use(game, chef, tile):
     touch = {ahead(p, d) for p in reachable(game, chef) for d in MOVES}
     return bool(touch & set(game.mdp.terrain_pos_dict[tile]))
+
+
+def order_note(game, chef, goal, recipe):
+    """How a goal stands against the open order for a recipe, if there is one."""
+    left = due(game, recipe)
+    if left is None:
+        return ""
+    needed = finish_ticks(game, chef, goal, recipe)
+    if needed is None:
+        return f", an order with {left} ticks left"
+    return f", an order with {left} ticks left, " + (f"too late alone as serving takes about {needed}" if needed > left else f"in time alone as serving takes about {needed}")
 
 
 def facts(game, chef, goal, ticks):
@@ -95,23 +197,23 @@ def facts(game, chef, goal, ticks):
         inside = (list(pot.ingredients) if pot else []) + [goal.item]
         if len(inside) == 3:
             recipe = possible(game, inside)[0]
-            out.append(f"completes {recipe}, worth {worth(game, recipe)}, which then starts cooking")
+            out.append(f"completes {recipe}, worth {worth(game, recipe)}, which then starts cooking" + order_note(game, chef, goal, recipe))
         else:
             for recipe in possible(game, inside):
                 need = game.recipes[recipe]["ingredients"]
                 more = [_count(need.count(i) - inside.count(i), i) for i in sorted(set(need)) if need.count(i) > inside.count(i)]
-                rest = rest_ticks(game, chef, goal, recipe)
+                rest = after_add(game, chef, goal, recipe)[0]
                 time = f", about {ticks + rest} ticks in all to fill the pot alone" if rest is not None else ""
-                tag = "the rush order, " if game.rush and game.rush[0] == recipe else ""
-                out.append(f"{recipe} ({tag}{worth(game, recipe)} points) would need {' and '.join(more)}{time}")
-        if game.rush and game.rush[0] not in possible(game, inside):
-            out.append("rules out the rush order in this pot")
+                out.append(f"{recipe} ({worth(game, recipe)} points{order_note(game, chef, goal, recipe)}) would need {' and '.join(more)}{time}")
+        for o in open_orders(game):
+            if o["recipe"] in possible(game, inside[:-1]) and o["recipe"] not in possible(game, inside):
+                out.append(f"rules out the {o['recipe']} order in this pot")
         if other == goal.item:
             out.append(f"the other chef is already carrying {goal.item}")
     elif goal.kind == "collect":
         recipe = possible(game, list(pot.ingredients))
         name = recipe[0] if recipe else "unlisted soup"
-        out.append(f"{name}, worth {worth(game, recipe[0]) if recipe else 0} once served")
+        out.append(f"{name}, worth {worth(game, recipe[0]) if recipe else 0} once served" + (order_note(game, chef, goal, name) if recipe else ""))
         if pot.is_ready:
             out.append("it is ready")
         elif pot.cook_time_remaining > ticks - 2:
@@ -119,10 +221,8 @@ def facts(game, chef, goal, ticks):
         if other == "dish":
             out.append("the other chef is already carrying a dish")
     elif goal.kind == "serve":
-        held = game.state.players[chef].held_object
-        soup = held if held and held.name == "soup" else next((o for o in game.state.objects.values() if o.name == "soup" and o.position not in game.pots), None)
-        recipe = possible(game, list(soup.ingredients)) if soup else []
-        out.append(f"scores {worth(game, recipe[0]) if recipe else 0} now")
+        recipe = made_by(game, chef, goal)
+        out.append(f"scores {worth(game, recipe[0]) if recipe else 0} now" + (order_note(game, chef, goal, recipe[0]) if recipe else ""))
     elif goal.kind == "pass":
         if not can_use(game, 1 - chef, "P"):
             out.append("the other chef has no pot to use it with")
@@ -148,31 +248,36 @@ def tags(name, goal):
     return {goal.kind, goal.item, name[-4:] if goal.pot else None}
 
 
-def supports_rush(game, chef, goal):
-    if not game.rush:
-        return False
-    wanted = game.recipes[game.rush[0]]["ingredients"]
-    if goal.kind == "add":
-        soup = game.state.objects.get(goal.pot)
-        inside = (list(soup.ingredients) if soup else []) + [goal.item]
-        return all(inside.count(i) <= wanted.count(i) for i in inside)
-    if goal.kind == "collect":
-        return sorted(game.state.objects[goal.pot].ingredients) == sorted(wanted) if goal.pot in game.state.objects else False
-    held = game.state.players[chef].held_object
-    return goal.kind == "serve" and bool(held) and held.name == "soup" and sorted(held.ingredients) == sorted(wanted)
-
-
 def costs_of(game, asked, prefer):
     """Concrete, checkable drawbacks of doing `asked` rather than `prefer`. Empty means none can be named."""
     every, out = goals(game), []
     ticks = {n: plan(game, 1, every[n], force=True)[1] or 0 for n in (asked, prefer)}
     said = facts(game, 1, every[asked], ticks[asked])
-    for phrase in ("cannot finish before the shift ends", "rules out the rush order in this pot", "the other chef has no pot to use it with"):
-        if phrase in said:
-            out.append(phrase)
-    if supports_rush(game, 1, every[prefer]) and not supports_rush(game, 1, every[asked]):
-        out.append(f"the rush {game.rush[0]} has {game.rush[1] - game.state.timestep} ticks left and this does not help it")
     done = facts(game, 1, every[prefer], ticks[prefer])
+    for part in said.split("; "):
+        if part.startswith(("cannot finish before", "rules out the", "the other chef has no pot")):
+            out.append(part)
+
+    def in_time(name):
+        """Orders a goal helps that can still be met."""
+        ok = {}
+        for recipe in orders_helped(game, 1, every[name]):
+            needed = finish_ticks(game, 1, every[name], recipe)
+            if needed is None or needed <= due(game, recipe):
+                ok[recipe] = needed
+        return ok
+
+    mine, better = in_time(asked), in_time(prefer)
+    for recipe in better:
+        if recipe in mine:
+            continue
+        if not mine:
+            out.append(f"{order_text(game, recipe)}, and this does not help it")
+        elif all(worth(game, recipe) > worth(game, m) or due(game, recipe) < due(game, m) for m in mine):
+            out.append(f"{order_text(game, recipe)}, while {order_text(game, next(iter(mine)))}")
+    for recipe in orders_helped(game, 1, every[asked]):
+        if recipe not in mine and better and recipe not in better:
+            out.append(f"the {recipe} order has {due(game, recipe)} ticks left but serving it would take about {finish_ticks(game, 1, every[asked], recipe)} alone")
     if done.startswith("completes") and not said.startswith("completes"):
         out.append(f"{low(every[prefer].label)} {done.split(',')[0]} instead")
     if every[prefer].kind in ("serve", "collect") and every[asked].kind not in ("serve", "collect"):
@@ -190,10 +295,14 @@ def context(game, chef, why_now, recent):
         pots[f"pot{n}"] = {"has": list(soup.ingredients) if soup else [], "status": status}
     return {
         "role": f"You choose the next goal for chef {chef + 1}, teammate of a human chef in a cooperative kitchen. Maximise the team's score before the shift ends.",
-        "rules": "A pot needs 3 ingredients matching a recipe, cooks 20 ticks, then is collected with a dish and served.",
+        "rules": "An ordered soup pays double if served before its order runs out; a missed order just loses the bonus. A pot needs 3 ingredients matching a recipe, cooks 20 ticks, then is collected with a dish and served.",
         "ticks_left": game.horizon - game.state.timestep,
         "score": game.score,
-        "rush_order": game.rush and {"recipe": game.rush[0], "pays": "double", "ticks_left": game.rush[1] - game.state.timestep},
+        "orders": [
+            {"recipe": o["recipe"], "pays": worth(game, o["recipe"]), "ticks_left": due(game, o["recipe"]),
+             "chef_alone_needs_about": time_to_serve(game, chef, o["recipe"])}
+            for o in open_orders(game)
+        ],
         "recipes": {n: {"needs": r["ingredients"], "points": r["points"]} for n, r in game.recipes.items()},
         "pots": pots,
         "you": {"holding": _held(game, chef), "current_goal": game.partner.name if chef == 1 else None},
@@ -224,14 +333,18 @@ def rules(game, chef, choices):
             score = (80 if pot.cook_time_remaining <= ticks else 25) - (60 if other == "dish" else 0)
         elif goal.kind == "add":
             inside = (list(pot.ingredients) if pot else []) + [goal.item]
-            score = 20 + 10 * len(inside) + worth(game, possible(game, inside)[0]) / 2 - ticks
+            values = {n: value(game, chef, goal, n) for n in possible(game, inside)}
+            best = max(values, key=values.get)
+            score = 20 + 10 * len(inside) + values[best] / 2 - ticks
+            if values[best] > game.recipes[best]["points"]:  # an order that can be met: sooner deadlines first
+                score += max(0, 10 - due(game, best) / 10)
             score -= 15 if other == goal.item and len(inside) == 3 else 0
         elif goal.kind == "pass":
             useful = can_use(game, 1 - chef, "P") and not can_use(game, chef, "P")
             waiting = [game.state.objects[p].name for p in shared_counters(game) if p in game.state.objects]
             wanted = goal.item != "dish" or not can_use(game, 1 - chef, "D")
             score = 45 - 15 * len(waiting) if useful and wanted and len(waiting) < 2 else 0
-            if useful and wanted and game.rush and goal.item in game.recipes[game.rush[0]]["ingredients"]:
+            if useful and wanted and any(goal.item in game.recipes[o["recipe"]]["ingredients"] for o in open_orders(game)):
                 score += 5
         else:
             score = 1
@@ -418,7 +531,7 @@ class Teammate:
         card = self.talk.card
         if not card:
             return
-        if card["kind"] == "clarify":
+        if card["kind"] in ("clarify", "which_order"):
             self.talk.card = None if reply == "withdraw" else card
             return
         self.talk.card = None
@@ -449,15 +562,16 @@ class Teammate:
     # Lasting rules
 
     def add_order(self, rule, topics, until):
-        no_rush = until == "rush_end" and not self.game.rush
-        if no_rush:
+        watch = [o["id"] for o in self.game.active] if until == "orders_end" else []
+        no_orders = until == "orders_end" and not watch
+        if no_orders:
             until = "cancelled"
         names = {"onion": "onions", "tomato": "tomatoes", "pot1": "pot 1", "pot2": "pot 2", "collect": "collecting", "serve": "serving"}
         what = " and ".join(names.get(t, t) for t in topics)
-        text = (f"leave {what} alone" if rule == "avoid" else f"only do {what}") + (" until the rush ends" if until == "rush_end" else "")
+        text = (f"leave {what} alone" if rule == "avoid" else f"only do {what}") + (" until the current orders close" if until == "orders_end" else "")
         self._order_ids += 1
-        self.orders.append({"id": self._order_ids, "rule": rule, "topics": topics, "until": until, "text": text})
-        self.talk.say(f"Understood: {text}." + (" There is no rush now, so it lasts until you undo it." if no_rush else " You can undo it below."))
+        self.orders.append({"id": self._order_ids, "rule": rule, "topics": topics, "until": until, "watch": watch, "text": text})
+        self.talk.say(f"Understood: {text}." + (" There are no orders now, so it lasts until you undo it." if no_orders else " You can undo it below."))
         self._log({"event": "order", **self.orders[-1]})
         if self.owner == "ai" and self.runner.name and self.blocked(self.runner.name):
             self.runner.set(None)
@@ -466,16 +580,19 @@ class Teammate:
     def make(self, recipe, force=False):
         """The player wants a particular soup next."""
         game = self.game
-        if recipe == "rush_order":
-            recipe = game.rush and game.rush[0]
+        self.talk.card = None
+        if recipe == "an_order":
+            names = [o["recipe"] for o in game.active]
+            if len(names) > 1:
+                return self.talk.which_order(names)
+            recipe = names[0] if names else None
         if recipe not in game.recipes:
-            return self.talk.say("There is no rush order right now. Name a soup and I'll work on it.")
-        cooking = [p for p in game.pots if p in game.state.objects and game.state.objects[p].is_full]
-        ready_for_rush = game.rush and any(sorted(game.state.objects[p].ingredients) == sorted(game.recipes[game.rush[0]]["ingredients"]) for p in cooking)
-        if self.mode != "instructions" and not force and game.rush and game.rush[0] != recipe and not ready_for_rush:
-            return self.talk.object_make(recipe, game.rush[0], [
-                f"the rush {game.rush[0]} pays {worth(game, game.rush[0])} and has {game.rush[1] - game.state.timestep} ticks left",
-                f"{recipe} pays {worth(game, recipe)}"])
+            return self.talk.say("There is no open order right now. Name a soup and I'll work on it.")
+        self.unskip(recipe)
+        if self.mode != "instructions" and not force:
+            better, costs = self._make_costs(recipe)
+            if costs:
+                return self.talk.object_make(recipe, better, costs)
         if force:  # the player has just weighed this up: do not raise the same conflict again
             self.talk._told.update({("conflict", n): game.state.timestep + 90 for n in goals(game)})
         self.orders = [o for o in self.orders if o["rule"] != "make"]
@@ -491,9 +608,58 @@ class Teammate:
         self.owner = None if self.owner == "human" and not self.runner.goal else self.owner
         self.replan("you asked for a particular soup")
 
+    def _make_costs(self, recipe):
+        """(better order, costs) if working on this soup would cost an order that can still be met."""
+        game = self.game
+
+        def slack(name):
+            needed = time_to_serve(game, 1, name)
+            return None if needed is None else due(game, name) - needed
+
+        # An order already cooking or on its way out is not endangered.
+        cooking = {n for g in goals(game).values() if g.kind in ("collect", "serve") for n in made_by(game, 1, g)}
+        others = [o["recipe"] for o in open_orders(game) if o["recipe"] != recipe and o["recipe"] not in cooking]
+        others = [n for n in others if slack(n) is None or slack(n) >= 0]
+        if not others:
+            return None, []
+        best = max(others, key=lambda n: (worth(game, n), -due(game, n)))
+        if due(game, recipe) is None:
+            return best, [order_text(game, best), f"{recipe} is not ordered and pays {worth(game, recipe)}"]
+        if recipe not in cooking and slack(recipe) is not None and slack(recipe) < 0:
+            return best, [f"the {recipe} order has {due(game, recipe)} ticks left but needs about {time_to_serve(game, 1, recipe)} alone", order_text(game, best)]
+        return None, []
+
+    def skip(self, recipe):
+        """The player wants chef 2 to leave one order alone."""
+        game = self.game
+        if recipe == "an_order":
+            names = [o["recipe"] for o in game.active]
+            if len(names) != 1:
+                return self.talk.say("Which order should I leave? Name the soup." if names else "There is no open order right now.")
+            recipe = names[0]
+        if game.due(recipe) is None:
+            return self.talk.say(f"There is no open order for {recipe}.")
+        self.orders = [o for o in self.orders if not (o["rule"] in ("make", "skip") and o["topics"] == [recipe])]
+        game.skipped.add(recipe)
+        self._order_ids += 1
+        watch = [o["id"] for o in game.active if o["recipe"] == recipe]
+        self.orders.append({"id": self._order_ids, "rule": "skip", "topics": [recipe], "until": "orders_end", "watch": watch, "text": f"leave the {recipe} order alone"})
+        self.talk.say(f"OK, I'll leave the {recipe} order to you.")
+        self._log({"event": "order", **self.orders[-1]})
+        if self.owner == "ai" and self.runner.name and self.blocked(self.runner.name):
+            self.runner.set(None)
+        self.replan("you told chef 2 to leave an order")
+
+    def unskip(self, recipe=None):
+        for name in list(self.game.skipped):
+            if recipe in (None, name):
+                self.game.skipped.discard(name)
+                self.orders = [o for o in self.orders if not (o["rule"] == "skip" and o["topics"] == [name])]
+
     def free(self):
         """The player hands the choice back: vetoes and rules go."""
         had = bool(self.vetoes or self.orders)
+        self.unskip()
         self.vetoes, self.orders, self.talk.card = {}, [], None
         self.talk.say("OK, I'll choose." + (" Your vetoes and rules are cleared." if had else ""))
         if self.owner == "human":
@@ -507,6 +673,9 @@ class Teammate:
             return self.replan("you lifted a veto")
         if order_id is None:
             self.vetoes = {}
+        for o in self.orders:
+            if o["rule"] == "skip" and order_id in (None, o["id"]):
+                self.game.skipped.discard(o["topics"][0])
         self.orders = [o for o in self.orders if order_id is not None and o["id"] != order_id]
         self.talk.say("Rule removed." if order_id is not None else "All your rules are removed.")
         self.replan("you removed a rule")
@@ -523,6 +692,10 @@ class Teammate:
             if o["rule"] == "make":
                 # Finished soups may always be cleared away, so only adding is restricted.
                 if goal.kind == "add" and not advances(self.game, goal, o["topics"][0]):
+                    return o
+            elif o["rule"] == "skip":
+                # Only jobs that could lead to nothing else are held back.
+                if goal.kind == "add" and advances_open(self.game, goal, o["topics"][0]) and made_by(self.game, 1, goal) == o["topics"]:
                     return o
             elif bool(has & set(o["topics"])) == (o["rule"] == "avoid"):
                 return o
@@ -576,8 +749,8 @@ class Teammate:
         if made:
             self.orders = [o for o in self.orders if o not in made]
             self.talk.say(f"That's the {made[0]['topics'][0]} served. Back to choosing for myself.")
-        if not game.rush:
-            self.orders = [o for o in self.orders if o["until"] != "rush_end"]
+        still = {o["id"] for o in game.active}
+        self.orders = [o for o in self.orders if o["until"] != "orders_end" or still & set(o["watch"])]
         if self.owner == "human" and self.runner.goal and self.runner.status.startswith("Stuck"):
             self.talk.say(f"I can't finish what you asked any more: {self.runner.status[7:]}.")
             if self.mode == "instructions":
@@ -597,14 +770,14 @@ class Teammate:
         for pos in self.game.pots:
             soup = self.game.state.objects.get(pos)
             pots.append((len(soup.ingredients), soup.is_ready) if soup else (0, False))
-        return self.game.rush, tuple(pots)
+        return frozenset(o["id"] for o in self.game.active), tuple(pots)
 
     def _why(self, now):
         forced, self._force = self._force, None if not self._pending else self._force
         if forced:
             return forced
-        rush, pots = self._signature()
-        old_rush, old_pots = self._seen
+        open_now, pots = self._signature()
+        open_before, old_pots = self._seen
         stuck = self.runner.goal and self.runner.status.startswith("Stuck")
         if self.owner == "human":
             return "your instruction became impossible" if stuck else None
@@ -618,8 +791,10 @@ class Teammate:
         elif self._blocked > BLOCKED_TICKS:
             self._blocked = 0
             return "the way is blocked"
-        if rush != old_rush:
-            return "a rush order started" if rush else "the rush order ended"
+        if open_now - open_before:
+            return "a new order arrived"
+        if open_before - open_now:
+            return "an order was completed or ran out"
         if pots != old_pots:
             if any(new[1] and not old[1] for new, old in zip(pots, old_pots)):
                 return "a soup is ready"
@@ -694,8 +869,8 @@ class Teammate:
             strong = top > OBJECT_ABOVE if source == "jev" else top - value >= RULES_GAP
             if allowed != "wait":
                 costs = costs_of(self.game, allowed, best)
-            elif supports_rush(self.game, 1, goals(self.game)[best]):
-                costs = [f"the rush {self.game.rush[0]} has {self.game.rush[1] - self.game.state.timestep} ticks left and nothing I may do helps it"]
+            elif orders_helped(self.game, 1, goals(self.game)[best]):
+                costs = [f"{order_text(self.game, orders_helped(self.game, 1, goals(self.game)[best])[0])}, and nothing I may do helps it"]
             else:
                 costs = []  # idle by the player's choice is not worth an interruption
             if strong and costs:
@@ -703,8 +878,8 @@ class Teammate:
         asks = self.talk.help_menu()
         name = answer.get("help", "none")
         if source == "rules" and asks and (not valid or valid[0][0] in ("wait", "pass_dish")):
-            wanted = self.game.recipes[self.game.rush[0]]["ingredients"] if self.game.rush else []
-            # Rush ingredients first, then whatever fills the fullest pot.
+            wanted = [i for o in open_orders(self.game) for i in self.game.recipes[o["recipe"]]["ingredients"]]
+            # Ordered ingredients first, then whatever fills the fullest pot.
             name = min(asks, key=lambda n: (n[5:] not in wanted, "has 2" not in asks[n], "has 1" not in asks[n]))
         if name in asks:
             self.talk.ask_for(name)
@@ -737,7 +912,7 @@ class Teammate:
     def view(self):
         now = self.game.state.timestep
         return {
-            "toward": self.view_toward(), "mode": self.mode, "thinking": bool(self._pending or self._judging), "orders": self.orders, "talk": self.talk.view(), "owner": self.owner, "decision": self.decision, "note": self.note,
+            "toward": self.view_toward(), "mode": self.mode, "thinking": bool(self._pending or self._judging), "orders": self.orders, "talk": self.talk.view(), "skipped": sorted(self.game.skipped), "owner": self.owner, "decision": self.decision, "note": self.note,
             "asking": self.asking and {"left": self.asking["until"] - now, "choices": self.asking["choices"]},
             "vetoes": {n: t - now for n, t in self.vetoes.items() if t > now},
             "calls": self.calls, "max_calls": MAX_CALLS, "cost": self.cost,

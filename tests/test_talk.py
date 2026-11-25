@@ -3,7 +3,8 @@
 import unittest
 
 from iis_assignment.game import Game
-from iis_assignment.planner import Teammate, menu
+from iis_assignment import planner
+from iis_assignment.planner import Teammate, context, menu
 from iis_assignment.skills import goals
 from iis_assignment.talk import TOPICS, grounded, understand_schema
 from test_planner import FakeJev, play, quiet
@@ -45,7 +46,7 @@ class Scored(FakeJev):
 def setup(layout="open", jev=None, haiku=None, mode="jev", rush=None):
     game = quiet(layout)
     if rush:
-        game.rush = (rush, 90)
+        game.open_order(rush, 90)
     return game, Teammate(game, mode, ask=jev or Scored(), talk_ask=haiku or FakeHaiku())
 
 
@@ -72,7 +73,7 @@ class VerdictTest(unittest.TestCase):
         mate.propose("add_onion_pot1")
         self.assertIsNone(game.partner.goal)
         self.assertEqual(mate.talk.card["kind"], "object")
-        self.assertIn("rules out the rush order in this pot", last(mate))
+        self.assertIn("rules out the tomato soup order in this pot", last(mate))
         mate.answer("insist")
         self.assertEqual((game.partner.name, mate.owner), ("add_onion_pot1", "human"))
         self.assertIsNone(mate.talk.card)
@@ -294,9 +295,9 @@ class RuleTest(unittest.TestCase):
 
     def test_rule_ends_with_the_rush(self):
         game, mate = setup(rush="tomato soup")
-        mate.add_order("avoid", ["pot1"], "rush_end")
+        mate.add_order("avoid", ["pot1"], "orders_end")
         self.assertEqual(len(mate.orders), 1)
-        game.rush = None
+        game.active[0]["status"] = "expired"
         mate.tick()
         self.assertEqual(mate.orders, [])
 
@@ -317,8 +318,8 @@ class RuleTest(unittest.TestCase):
 
     def test_rule_until_rush_without_a_rush_says_so(self):
         _, mate = setup()
-        mate.add_order("avoid", ["pot1"], "rush_end")
-        self.assertIn("no rush now", mate.talk.chat[0]["text"])
+        mate.add_order("avoid", ["pot1"], "orders_end")
+        self.assertIn("no orders now", mate.talk.chat[0]["text"])
 
     def test_conflict_exception_is_for_one_job(self):
         game, mate = setup(jev=Scored(add_tomato_pot1=0.9, add_onion_pot1=0.1), rush="tomato soup")
@@ -360,12 +361,70 @@ class SoupAndVetoTest(unittest.TestCase):
 
     def test_make_the_order(self):
         _, mate = setup(rush="mixed soup")
-        mate.make("rush_order")
+        mate.make("an_order")
         self.assertEqual(mate.orders[0]["topics"], ["mixed soup"])
         self.assertIsNone(mate.blocked("add_onion_pot1"))
         _, mate = setup()
-        mate.make("rush_order")
-        self.assertIn("no rush order", last(mate))
+        mate.make("an_order")
+        self.assertIn("no open order", last(mate))
+
+    def test_make_the_order_asks_which_if_several(self):
+        game, mate = setup(rush="mixed soup")
+        game.open_order("tomato soup", 80)
+        mate.make("an_order")
+        self.assertEqual(mate.talk.card["kind"], "which_order")
+        self.assertEqual(mate.orders, [])
+        json_safe(mate)
+        mate.make("tomato soup")
+        self.assertEqual(mate.orders[0]["topics"], ["tomato soup"])
+        self.assertIsNone(mate.talk.card)
+
+    def test_make_an_order_that_cannot_be_met_is_questioned(self):
+        game, mate = setup()
+        game.open_order("onion soup", 12)
+        game.open_order("tomato soup", 85)
+        mate.make("onion soup")
+        self.assertEqual((mate.talk.card["kind"], mate.talk.card["prefer"]), ("make", "tomato soup"))
+        self.assertIn("12 ticks left but needs about", last(mate))
+
+    def test_make_one_of_two_feasible_orders_is_accepted(self):
+        game, mate = setup(rush="mixed soup")
+        game.open_order("tomato soup", 85)
+        mate.make("tomato soup")
+        self.assertIsNone(mate.talk.card)
+        self.assertEqual(mate.orders[0]["topics"], ["tomato soup"])
+
+    def test_skip_leaves_an_order_until_it_closes(self):
+        game, mate = setup(haiku=FakeHaiku({"type": "skip", "recipe": "mixed soup"}), rush="mixed soup")
+        self.assertEqual(planner.worth(game, "mixed soup"), 60)
+        mate.talk.hear("I'll do the mixed order")
+        self.assertEqual(planner.worth(game, "mixed soup"), 30)
+        self.assertEqual(mate.view()["skipped"], ["mixed soup"])
+        self.assertEqual(context(game, 1, "", [])["orders"], [])
+        game._close_order(game.active[0], "completed", 0)
+        mate.tick()
+        self.assertEqual((mate.orders, game.skipped), ([], set()))
+
+    def test_skip_can_be_undone_and_make_overrides_it(self):
+        game, mate = setup(rush="mixed soup")
+        mate.skip("mixed soup")
+        mate.cancel_orders(mate.orders[0]["id"])
+        self.assertEqual(game.skipped, set())
+        mate.skip("mixed soup")
+        mate.make("mixed soup")
+        self.assertEqual((game.skipped, [o["rule"] for o in mate.orders]), (set(), ["make"]))
+        mate.skip("tomato soup")
+        self.assertIn("no open order for tomato soup", last(mate))
+
+    def test_skip_holds_back_jobs_that_only_serve_that_order(self):
+        game, mate = setup(rush="tomato soup")
+        mate.instruct("add_tomato_pot1")
+        while game.partner.goal:
+            game.step(["stay", mate.act()])
+        mate.skip("tomato soup")
+        self.assertTrue(mate.blocked("add_tomato_pot1"))
+        self.assertIsNone(mate.blocked("add_onion_pot1"))
+        self.assertIsNone(mate.blocked("add_tomato_pot2"))
 
     def test_veto_with_a_cost_is_questioned(self):
         game, mate = setup(jev=Scored(add_tomato_pot1=0.9, add_onion_pot1=0.1), rush="tomato soup")
@@ -393,7 +452,7 @@ class SoupAndVetoTest(unittest.TestCase):
         game, mate = setup(jev=Scored(add_tomato_pot1=0.9, add_onion_pot1=0.1))
         mate.veto("add_tomato_pot1", force=True)
         mate.veto("add_tomato_pot2", force=True)
-        game.rush = ("tomato soup", 90)
+        game.open_order("tomato soup", 90)
         mate.tick()
         self.assertEqual((mate.talk.card["kind"], mate.talk.card["goal"]), ("conflict", "add_tomato_pot1"))
         mate.answer("cancel")
