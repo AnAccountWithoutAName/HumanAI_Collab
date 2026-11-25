@@ -22,23 +22,39 @@ uv run python -m unittest discover tests
 
 ## Rules
 
-Put three of the same ingredient in a pot, wait 20 ticks, collect the soup with a dish and serve it
-(20 points). A rush order doubles one soup type for 90 ticks. Mixed soups score 0. A game lasts 300
-ticks, and the seed fixes its rush orders. The *Split* kitchen forces chefs to pass items over a counter.
+Fill a pot with three ingredients, wait 20 ticks, collect the soup with a dish and serve it. A game
+lasts 300 ticks. A rush order doubles one recipe for 90 ticks, and the seed fixes which and when. The
+*Split* kitchen forces chefs to pass items over a counter.
+
+| Recipe | Ingredients (any order) | Points |
+|---|---|---|
+| Onion soup | 3 onions | 20 |
+| Tomato soup | 3 tomatoes | 20 |
+| Mixed soup | 2 onions, 1 tomato | 30 |
+
+Anything else scores 0.
+
+## How chef 2 acts
+
+A planner never chooses moves. It chooses a named goal such as `add_onion_pot1` from a menu that gives
+each goal's estimated cost, or the reason it is impossible. The goal layer then finds a path around the
+other chef and carries the goal out. At present the person is the planner, using the **Ask chef 2** panel.
 
 ## Status
 
 | Part | State |
 |---|---|
-| Game, rush orders, browser interface, human control of both chefs | Implemented |
-| AI teammate (chef 2 idles unless a human moves it) | Planned |
-| Goal panel, instructions, override and conflict prompt | Planned |
+| Game, recipe book, rush orders, human control of both chefs | Implemented |
+| Goals, pathfinding, yielding to the other chef, manual goal panel | Implemented |
+| Planner that chooses goals (rules, then LLM) | Planned |
+| Typed instructions, ranked goals with reasons, veto and conflict prompt | Planned |
 | Evaluation against baselines | Planned |
 
 ## Code
 
 - `src/iis_assignment/game.py`: layouts, rush orders, scoring, state view
-- `src/iis_assignment/server.py`: local web server; `partner_action` is where the teammate plugs in
+- `src/iis_assignment/skills.py`: goals, pathfinding and the runner that carries out a goal
+- `src/iis_assignment/server.py`: local web server
 - `src/iis_assignment/static/index.html`: interface
 - `src/overcooked_ai_py/`: third-party engine (see below)
 
@@ -49,6 +65,11 @@ ticks, and the seed fixes its rush orders. The *Split* kitchen forces chefs to p
   needs Python 3.10, OpenCV, pygame and SciPy, so only its game logic is vendored (numpy is the sole
   dependency). Added rush orders because the original objectives do not change during play. Chose
   time-moves-when-you-do by default so that a slow planner will not penalise the player.
+- **2026-11-25, goals and navigation.** Trying the game showed it lacked a recipe book and that nothing
+  could steer an AI chef. Added a recipe book, made mixed soup a real recipe worth more, and added the
+  goal layer. A random two-chef test exposed two deadlocks: chefs mirroring each other's detours, and each
+  waiting for the tile the other occupied. Fixed with independent hesitation and by letting a waiting chef
+  move closer. An idle chef now also steps aside when walked into.
 
 ## Reused material
 

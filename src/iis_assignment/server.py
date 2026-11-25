@@ -14,11 +14,6 @@ lock = threading.Lock()
 game = Game()
 
 
-def partner_action(game):
-    """Seam for the AI teammate (chef 2). Planned: it idles for now."""
-    return "stay"
-
-
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
@@ -43,7 +38,9 @@ class Handler(BaseHTTPRequestHandler):
                     if first not in ACTIONS or (second is not None and second not in ACTIONS):
                         raise ValueError("unknown action")
                     # None means "chef 2 is not human-controlled this tick"
-                    game.step([first, partner_action(game) if second is None else second])
+                    game.step([first, game.partner.act() if second is None else second])
+                elif self.path == "/goal":  # None stops chef 2
+                    game.partner.set(body["goal"])
                 else:
                     return self._json(404, {"error": "not found"})
                 self._json(200, game.snapshot())

@@ -23,6 +23,13 @@
   button, select, input { font:inherit; padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:inherit }
   input[type=number] { width:74px } label { display:block; margin:6px 0 } p { margin:6px 0 }
   :focus-visible { outline:2px solid #17635c; outline-offset:2px }
+  .recipe { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; border:2px solid transparent }
+  .recipe.rush { border-color:var(--rush) }
+  .recipe i { display:inline-block; width:15px; height:15px; border-radius:50%; border:1px solid #fff } .recipe small { margin-left:auto }
+  #below { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:12px } #below .card { margin:0 }
+  small { color:var(--muted) }
+  #goals { display:grid; gap:5px; margin-top:8px } #goals button { display:flex; justify-content:space-between; gap:8px; text-align:left; font-size:13px; cursor:pointer }
+  #goals button:disabled { background:#f3f6f5; color:var(--muted); cursor:default } #goals button.on { border-color:#c75f14; box-shadow:0 0 0 1px #c75f14 }
   @media (max-width:780px) { main { grid-template-columns:minmax(0,1fr) } }
 </style>
 <main>
@@ -35,8 +42,7 @@
     <p id="rush" role="status"></p>
     <canvas id="board"></canvas>
     <div id="hints"><div id="h0"></div><div id="h1"></div></div>
-  </section>
-  <aside>
+    <div id="below">
     <div class="card">
       <h2>Game</h2>
       <label>Kitchen <select id="layout"><option value="open">Open</option><option value="split">Split (pass items over)</option></select></label>
@@ -49,9 +55,18 @@
       <p>Chef 1 (blue): <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, use <kbd>Space</kbd></p>
       <p>Chef 2 (orange): arrow keys, use <kbd>Enter</kbd></p>
       <p>Wait one tick: <kbd>Q</kbd> (hold to keep waiting)</p>
-      <p>Put 3 of the same ingredient in a pot, wait, collect with a dish, serve at the hatch. Mixed soups score 0.</p>
+      <p>Fill a pot with 3 ingredients from the recipe book, wait, collect with a dish, serve at the hatch. Other mixes score 0.</p>
     </div>
     <div class="card"><h2>Events</h2><ul id="log"></ul></div>
+    </div>
+  </section>
+  <aside>
+    <div class="card"><h2>Recipe book</h2><div id="book"></div></div>
+    <div class="card">
+      <h2>Ask chef 2</h2>
+      <div id="status" role="status"></div>
+      <div id="goals"></div>
+    </div>
   </aside>
 </main>
 <script>
@@ -98,6 +113,7 @@ addEventListener("keyup", e => { const k = KEYS[e.code]; if (k) held[k[0]] = hel
 addEventListener("blur", () => held = [[], []]);
 $("live").onchange = e => { clearInterval(timer); tapped = [null, null]; held = [[], []]; if (e.target.checked) timer = setInterval(liveTick, 220); e.target.blur(); };
 $("new").onclick = e => { e.target.blur(); api("/new", { layout:$("layout").value, seed:Number($("seed").value) || 0 }); };
+$("goals").onclick = e => { const b = e.target.closest("button"); if (b) { b.blur(); api("/goal", { goal:b.dataset.goal || null }); } };
 $("layout").onchange = e => e.target.blur();
 
 const disc = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
@@ -128,6 +144,8 @@ function render() {
     if (o.left != null) { ring(cx, cy, 1 - o.left / o.cook_time, "#ffd257"); word(o.left, cx, cy + 18, "#fff"); }
     if (o.ready) { ring(cx, cy, 1, "#46c66f"); word("ready", cx, cy + 17, "#fff"); }
   }
+  s.pots.forEach(([x, y], i) => { disc(x * T + 13, y * T + 13, 10, "#fff"); word(i + 1, x * T + 13, y * T + 17, "#20302f", 12); });
+  s.partner.path.forEach(([x, y]) => disc(x * T + T / 2, y * T + T / 2, 6, "#c75f1488"));
   s.chefs.forEach((c, i) => {
     const cx = c.pos[0] * T + T / 2, cy = c.pos[1] * T + T / 2, [dx, dy] = c.facing;
     g.strokeStyle = CHEF[i]; g.lineWidth = 3; g.setLineDash([6, 4]);
@@ -140,9 +158,25 @@ function render() {
   });
   if (s.done) { g.fillStyle = "#20302fcc"; g.fillRect(0, 0, cv.width, cv.height); word(`Shift over: ${s.score} points`, cv.width / 2, cv.height / 2, "#fff", 34); }
   $("score").textContent = s.score; $("time").textContent = s.horizon - s.tick;
+  panels();
   $("rush").className = s.rush ? "on" : "";
-  $("rush").textContent = s.rush ? `Rush order: ${s.rush.ingredient} soup for double points, ${s.rush.left} ticks left` : "No rush order. Any pure onion or tomato soup scores 20.";
+  $("rush").textContent = s.rush ? `Rush order: ${s.rush.recipe} for double points, ${s.rush.left} ticks left` : "No rush order. Cook anything from the recipe book.";
   $("log").innerHTML = s.log.length ? [...s.log].reverse().map(l => `<li><span>${l.tick}</span>${l.text}</li>`).join("") : "<li>Nothing yet</li>";
+}
+function panels() {
+  const p = s.partner, rushed = n => s.rush?.recipe === n;
+  $("book").innerHTML = Object.entries(s.recipes).map(([n, r]) => `<div class="recipe${rushed(n) ? " rush" : ""}"><span>${r.ingredients.map(k => `<i style="background:${COLOR[k]}" title="${k}"></i>`).join("")}</span><b>${n}</b><small>${r.points * (rushed(n) ? 2 : 1)} pts</small></div>`).join("")
+    + `<small>Yellow is onion, red is tomato. Any order. All cook in 20 ticks.</small>`;
+  $("status").innerHTML = `${p.label ? `<b>${p.label}</b><br>` : ""}<small>${p.status}</small>`;
+  // Update buttons in place: rebuilding them every tick would swallow clicks on the live clock.
+  const all = [...p.options, { name:"", label:"Stop", ticks:null, reason:null }];
+  if ([...$("goals").children].map(b => b.dataset.goal).join() !== all.map(o => o.name).join())
+    $("goals").innerHTML = all.map(o => `<button data-goal="${o.name}"><span></span><small></small></button>`).join("");
+  all.forEach((o, i) => {
+    const b = $("goals").children[i], on = o.name !== "" && o.name === p.goal;
+    b.className = on ? "on" : ""; b.disabled = !!o.reason && !on;
+    b.firstChild.textContent = o.label; b.lastChild.textContent = o.reason || (o.ticks ? `~${o.ticks} ticks` : "");
+  });
 }
 api("/state").then(() => { if (s) { $("layout").value = s.layout; $("seed").value = s.seed; } });
 </script>

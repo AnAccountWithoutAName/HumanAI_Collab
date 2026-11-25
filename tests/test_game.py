@@ -30,7 +30,7 @@ class GameTest(unittest.TestCase):
 
     def test_rush_pays_double_once_then_clears(self):
         g = Game("open")
-        g.rush_schedule = {5: "onion"}
+        g.rush_schedule = {5: "onion soup"}
         cook_onion_soup(g)
         play(g, "e")
         self.assertEqual(g.score, 40)
@@ -38,9 +38,9 @@ class GameTest(unittest.TestCase):
 
     def test_rush_expires(self):
         g = Game("open")
-        g.rush_schedule = {5: "tomato"}
+        g.rush_schedule = {5: "tomato soup"}
         play(g, "." * 5)
-        self.assertEqual(g.snapshot()["rush"], {"ingredient": "tomato", "left": RUSH_TICKS})
+        self.assertEqual(g.snapshot()["rush"], {"recipe": "tomato soup", "left": RUSH_TICKS})
         play(g, "." * RUSH_TICKS)
         self.assertIsNone(g.rush)
 
