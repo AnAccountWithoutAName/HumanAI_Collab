@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kitchen Teammate</title>
+<style>
+  :root { --ink:#20302f; --muted:#5d706e; --line:#cfdad7; --bg:#eef3f1; --card:#fff; --rush:#b3261e; }
+  * { box-sizing:border-box }
+  body { margin:0; padding:20px 16px; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,sans-serif }
+  main { max-width:1060px; margin:auto; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:20px }
+  header { grid-column:1/-1; display:flex; gap:10px 28px; align-items:center; flex-wrap:wrap }
+  h1 { font-size:20px; margin:0 auto 0 0 }
+  .stat b { font-size:20px; font-variant-numeric:tabular-nums; margin-left:6px }
+  canvas { width:100%; display:block; border-radius:8px }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px }
+  h2 { font-size:14px; margin:0 0 6px }
+  #rush { min-height:46px; margin:0 0 12px; padding:11px 14px; border-radius:8px; background:var(--card); border:1px solid var(--line); color:var(--muted) }
+  #rush.on { background:var(--rush); border-color:var(--rush); color:#fff; font-weight:600 }
+  #hints { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px }
+  #hints div { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:60px }
+  ul { list-style:none; margin:0; padding:0 } li { padding:3px 0 } li span { color:var(--muted); display:inline-block; width:38px }
+  kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; font:12px ui-monospace,monospace; background:#f7faf9 }
+  button, select, input { font:inherit; padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:inherit }
+  input[type=number] { width:74px } label { display:block; margin:6px 0 } p { margin:6px 0 }
+  :focus-visible { outline:2px solid #17635c; outline-offset:2px }
+  @media (max-width:780px) { main { grid-template-columns:minmax(0,1fr) } }
+</style>
+<main>
+  <header>
+    <h1>Kitchen Teammate</h1>
+    <div class="stat">Score<b id="score">0</b></div>
+    <div class="stat">Ticks left<b id="time">0</b></div>
+  </header>
+  <section>
+    <p id="rush" role="status"></p>
+    <canvas id="board"></canvas>
+    <div id="hints"><div id="h0"></div><div id="h1"></div></div>
+  </section>
+  <aside>
+    <div class="card">
+      <h2>Game</h2>
+      <label>Kitchen <select id="layout"><option value="open">Open</option><option value="split">Split (pass items over)</option></select></label>
+      <label>Seed <input id="seed" type="number" value="0"></label>
+      <label><input id="live" type="checkbox"> Live clock (off: time moves when you do)</label>
+      <button id="new">New game</button>
+    </div>
+    <div class="card">
+      <h2>Controls</h2>
+      <p>Chef 1 (blue): <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, use <kbd>Space</kbd></p>
+      <p>Chef 2 (orange): arrow keys, use <kbd>Enter</kbd></p>
+      <p>Wait one tick: <kbd>Q</kbd> (hold to keep waiting)</p>
+      <p>Put 3 of the same ingredient in a pot, wait, collect with a dish, serve at the hatch. Mixed soups score 0.</p>
+    </div>
+    <div class="card"><h2>Events</h2><ul id="log"></ul></div>
+  </aside>
+</main>
+<script>
+const $ = id => document.getElementById(id), T = 72, cv = $("board"), g = cv.getContext("2d");
+const KEYS = { KeyW:[0,"up"], KeyS:[0,"down"], KeyA:[0,"left"], KeyD:[0,"right"], Space:[0,"interact"],
+  ArrowUp:[1,"up"], ArrowDown:[1,"down"], ArrowLeft:[1,"left"], ArrowRight:[1,"right"], Enter:[1,"interact"] };
+const COLOR = { onion:"#e3bf62", tomato:"#d2453a" }, CHEF = ["#2463b0", "#c75f14"];
+let s, busy = false, tapped = [null, null], held = [[], []], timer;
+
+async function api(path, body) {
+  try {
+    const r = await fetch(path, body && { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    s = data; render();
+  } catch (e) { $("rush").className = "on"; $("rush").textContent = "Game server problem: " + e.message; }
+}
+async function step(actions) {
+  if (busy || !s || s.done) return;
+  busy = true;
+  await api("/step", { actions });
+  busy = false;
+}
+// Live clock: each tick uses the last tap, or a held direction key.
+function liveTick() {
+  if (busy) return;
+  const pick = i => tapped[i] || held[i].at(-1) || null, a = [pick(0) || "stay", pick(1)];
+  tapped = [null, null];
+  step(a);
+}
+const typing = e => /INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName);
+addEventListener("keydown", e => {
+  if (typing(e) || e.ctrlKey || e.altKey || e.metaKey) return;
+  const k = KEYS[e.code], live = $("live").checked;
+  if (!k && e.code !== "KeyQ") return;
+  e.preventDefault();
+  if (!k) { if (!live) step(["stay", null]); return; }
+  const [i, act] = k;
+  if (act === "interact" && e.repeat) return;   // holding "use" must not pick up and drop repeatedly
+  if (!live) return void step(i ? ["stay", act] : [act, null]);
+  if (!e.repeat) { tapped[i] = act; if (act !== "interact") held[i].push(act); }
+});
+addEventListener("keyup", e => { const k = KEYS[e.code]; if (k) held[k[0]] = held[k[0]].filter(a => a !== k[1]); });
+addEventListener("blur", () => held = [[], []]);
+$("live").onchange = e => { clearInterval(timer); tapped = [null, null]; held = [[], []]; if (e.target.checked) timer = setInterval(liveTick, 220); e.target.blur(); };
+$("new").onclick = e => { e.target.blur(); api("/new", { layout:$("layout").value, seed:Number($("seed").value) || 0 }); };
+$("layout").onchange = e => e.target.blur();
+
+const disc = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
+const box = (x, y, w, h, c) => { g.fillStyle = c; g.beginPath(); g.roundRect(x, y, w, h, 6); g.fill(); };
+function ring(x, y, part, c) { g.strokeStyle = c; g.lineWidth = 6; g.beginPath(); g.arc(x, y, 26, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * part); g.stroke(); g.lineWidth = 1; }
+function word(t, x, y, c = "#20302f", size = 12) { g.fillStyle = c; g.font = `600 ${size}px system-ui`; g.textAlign = "center"; g.fillText(t, x, y); }
+function item(o, x, y) {
+  if (o.name === "dish" || o.name === "soup") { disc(x, y, 15, "#9fb0ad"); disc(x, y, 13, "#fff"); }
+  if (o.name === "soup") o.ingredients.forEach((k, i) => disc(x - 6 + i * 6, y, 5, COLOR[k]));
+  else if (COLOR[o.name]) { disc(x, y, 12, "#fff"); disc(x, y, 10, COLOR[o.name]); }
+}
+function render() {
+  const W = s.grid[0].length, H = s.grid.length;
+  if (cv.width !== W * T || cv.height !== H * T) { cv.width = W * T; cv.height = H * T; }
+  s.grid.forEach((row, y) => [...row].forEach((t, x) => {
+    const px = x * T, py = y * T, cx = px + T / 2, cy = py + T / 2;
+    g.fillStyle = t === " " ? "#f7f3e8" : "#a9bab6"; g.fillRect(px, py, T, T);
+    g.strokeStyle = t === " " ? "#e9e2d0" : "#97aaa5"; g.strokeRect(px + .5, py + .5, T - 1, T - 1);
+    if (t === "O" || t === "T") { const k = t === "O" ? "onion" : "tomato"; box(px + 8, py + 8, T - 16, T - 16, "#7b5b3a"); [-13, 0, 13].forEach(d => disc(cx + d, cy - 6, 8, COLOR[k])); word(k, cx, cy + 20, "#fff"); }
+    if (t === "D") { disc(cx, cy - 5, 18, "#8b9b98"); disc(cx, cy - 8, 18, "#fff"); word("dish", cx, cy + 27); }
+    if (t === "S") { box(px + 5, py + 5, T - 10, T - 10, "#17635c"); word("SERVE", cx, cy + 5, "#fff", 14); }
+    if (t === "P") { disc(cx, cy, 29, "#2d3a39"); disc(cx, cy, 23, "#4b5b59"); }
+  }));
+  for (const o of s.objects) {
+    const [x, y] = o.pos, cx = x * T + T / 2, cy = y * T + T / 2;
+    if (s.grid[y][x] !== "P") { item(o, cx, cy); continue; }
+    o.ingredients.forEach((k, i) => disc(cx - 13 + i * 13, cy - 3, 7, COLOR[k]));
+    if (o.left != null) { ring(cx, cy, 1 - o.left / o.cook_time, "#ffd257"); word(o.left, cx, cy + 18, "#fff"); }
+    if (o.ready) { ring(cx, cy, 1, "#46c66f"); word("ready", cx, cy + 17, "#fff"); }
+  }
+  s.chefs.forEach((c, i) => {
+    const cx = c.pos[0] * T + T / 2, cy = c.pos[1] * T + T / 2, [dx, dy] = c.facing;
+    g.strokeStyle = CHEF[i]; g.lineWidth = 3; g.setLineDash([6, 4]);
+    g.strokeRect((c.pos[0] + dx) * T + 3 + i * 3, (c.pos[1] + dy) * T + 3 + i * 3, T - 6 - i * 6, T - 6 - i * 6); g.setLineDash([]); g.lineWidth = 1;
+    disc(cx, cy, 25, "#fff"); disc(cx, cy, 23, CHEF[i]);
+    disc(cx + dx * 18, cy + dy * 18, 6, "#fff");
+    word(i + 1, cx - dx * 6, cy + 6 - dy * 6, "#fff", 17);
+    if (c.held) item(c.held, cx + dx * 22, cy + dy * 22);
+    $("h" + i).innerHTML = `<b style="color:${CHEF[i]}">Chef ${i + 1}</b> holding ${c.held ? c.held.name : "nothing"}<br>${c.hint ? `<kbd>${i ? "Enter" : "Space"}</kbd> ${c.hint}` : "Nothing to use here"}`;
+  });
+  if (s.done) { g.fillStyle = "#20302fcc"; g.fillRect(0, 0, cv.width, cv.height); word(`Shift over: ${s.score} points`, cv.width / 2, cv.height / 2, "#fff", 34); }
+  $("score").textContent = s.score; $("time").textContent = s.horizon - s.tick;
+  $("rush").className = s.rush ? "on" : "";
+  $("rush").textContent = s.rush ? `Rush order: ${s.rush.ingredient} soup for double points, ${s.rush.left} ticks left` : "No rush order. Any pure onion or tomato soup scores 20.";
+  $("log").innerHTML = s.log.length ? [...s.log].reverse().map(l => `<li><span>${l.tick}</span>${l.text}</li>`).join("") : "<li>Nothing yet</li>";
+}
+api("/state").then(() => { if (s) { $("layout").value = s.layout; $("seed").value = s.seed; } });
+</script>
+</html>

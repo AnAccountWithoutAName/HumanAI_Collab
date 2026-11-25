@@ -1,0 +1,17 @@
+[project]
+name = "iis-assignment"
+version = "0.1.0"
+description = "Two-player cooperative kitchen for studying human-AI goal planning"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2"]
+
+[project.scripts]
+iis-assignment = "iis_assignment.server:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["iis_assignment", "overcooked_ai_py"]
